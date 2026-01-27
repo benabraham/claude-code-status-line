@@ -1,6 +1,6 @@
 # Claude Code Status Line
 
-A statusline script for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI that displays context window usage, model info, budget tracking, and git status.
+A statusline script for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI that displays context window usage, 5-hour and weekly usage **remainder**, model info, and git branch.
 
 ### Dark theme
 ![Dark theme](screenshots/dark.png)
