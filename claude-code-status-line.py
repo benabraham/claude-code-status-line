@@ -27,6 +27,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import time
 from datetime import datetime
 
@@ -556,12 +557,20 @@ def fetch_usage_data():
 
         data = json.loads(result.stdout)
 
-        # Cache the result
+        # Cache the result atomically to avoid corruption from concurrent reads
+        tmp_path = None
         try:
-            with open(USAGE_CACHE_PATH, "w") as f:
+            cache_dir = os.path.dirname(USAGE_CACHE_PATH)
+            fd, tmp_path = tempfile.mkstemp(dir=cache_dir)
+            with os.fdopen(fd, 'w') as f:
                 json.dump({"timestamp": time.time(), "data": data}, f)
-        except IOError:
-            pass
+            os.replace(tmp_path, USAGE_CACHE_PATH)
+        except (IOError, OSError):
+            if tmp_path:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
 
         return data
     except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError):
