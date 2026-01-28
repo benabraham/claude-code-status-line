@@ -32,7 +32,7 @@ from datetime import datetime
 
 # =============================================================================
 # CONFIGURATION — override any setting via environment variables (SL_ prefix)
-# Example: SL_THEME=light SL_SHOW_GIT_BRANCH=0 ~/.claude/claude-code-status-line.py
+# Example: SL_THEME=light SL_SEGMENTS='model percentage directory' ~/.claude/claude-code-status-line.py
 # =============================================================================
 
 
@@ -44,32 +44,66 @@ def _env_int(key, default):
     return int(os.environ.get(f"SL_{key}", default))
 
 
-def _env_bool(key, default):
-    val = os.environ.get(f"SL_{key}")
-    if val is None:
-        return default
-    return val.lower() not in ("0", "false", "no", "off")
-
-
-SESSION_PROGRESS_BAR_WIDTH = _env_int("SESSION_PROGRESS_BAR_WIDTH", 12)
 THEME = _env_str("THEME", "dark")
-USAGE_LEFT_GAUGE_STYLE = _env_str("USAGE_LEFT_GAUGE_STYLE", "blocks")
-USAGE_LEFT_BLOCK_GAUGE_WIDTH = _env_int("USAGE_LEFT_BLOCK_GAUGE_WIDTH", 4)
-
-SHOW_MODEL_NAME = _env_bool("SHOW_MODEL_NAME", True)
-SHOW_SESSION_PROGRESS_BAR = _env_bool("SHOW_SESSION_PROGRESS_BAR", True)
-SHOW_SESSION_PERCENTAGE = _env_bool("SHOW_SESSION_PERCENTAGE", True)
-SHOW_SESSION_TOKENS = _env_bool("SHOW_SESSION_TOKENS", True)
-SHOW_CURRENT_DIR = _env_bool("SHOW_CURRENT_DIR", True)
-SHOW_GIT_BRANCH = _env_bool("SHOW_GIT_BRANCH", True)
-HIDE_DEFAULT_BRANCH = _env_bool("HIDE_DEFAULT_BRANCH", True)
-SHOW_5H_USAGE_LEFT = _env_bool("SHOW_5H_USAGE_LEFT", True)
-SHOW_WEEKLY_USAGE_LEFT = _env_bool("SHOW_WEEKLY_USAGE_LEFT", True)
-SHOW_FALLBACK_INFO = _env_bool("SHOW_FALLBACK_INFO", True)
-
 USAGE_CACHE_DURATION = _env_int("USAGE_CACHE_DURATION", 300)
-
 THEME_FILE = _env_str("THEME_FILE", os.path.expanduser("~/.claude/claude-code-theme.py"))
+
+# --- Segment system ---
+
+DEFAULT_SEGMENTS = 'model progress_bar percentage tokens directory git_branch usage_5hour usage_weekly'
+VALID_SEGMENTS = frozenset(DEFAULT_SEGMENTS.split())
+
+SEGMENT_DEFAULTS = {
+    'progress_bar': {'width': '12'},
+    'git_branch': {'hide_default': '1'},
+    'percentage': {'fallback': '1'},
+    'tokens': {'fallback': '1'},
+    'usage_5hour': {'gauge': 'blocks', 'width': '4'},
+    'usage_weekly': {'gauge': 'blocks', 'width': '4'},
+}
+
+
+def _parse_segments(raw):
+    """Parse 'segment:key=val:key=val ...' into [(name, {opts}), ...]"""
+    if raw is None:
+        raw = DEFAULT_SEGMENTS
+    stripped = raw.strip()
+    if not stripped:
+        return []
+    result = []
+    for token in stripped.split():
+        parts = token.split(':')
+        name = parts[0]
+        if name not in VALID_SEGMENTS:
+            continue
+        opts = dict(SEGMENT_DEFAULTS.get(name, {}))
+        for part in parts[1:]:
+            if '=' in part:
+                k, v = part.split('=', 1)
+                opts[k] = v
+        if 'width' in opts and name in ('usage_5hour', 'usage_weekly'):
+            try:
+                w = int(opts['width'])
+                if w < 2 or w % 2 != 0:
+                    opts['width'] = '4'
+            except ValueError:
+                opts['width'] = '4'
+        result.append((name, opts))
+    return result
+
+
+SEGMENTS = _parse_segments(os.environ.get('SL_SEGMENTS'))
+
+
+def _has_segment(name):
+    return any(n == name for n, _ in SEGMENTS)
+
+
+def _segment_opts(name):
+    for n, opts in SEGMENTS:
+        if n == name:
+            return opts
+    return SEGMENT_DEFAULTS.get(name, {})
 
 # =============================================================================
 # HEX COLOR CONVERSION (needed before theme loading)
@@ -386,30 +420,6 @@ def get_git_branch(cwd):
     return None
 
 
-def get_cwd_suffix(cwd):
-    """Format cwd and git branch for display"""
-    if not cwd:
-        return ""
-
-    suffix = ""
-
-    if SHOW_CURRENT_DIR:
-        # Shorten home directory to ~
-        home = os.path.expanduser("~")
-        if cwd.startswith(home):
-            cwd_short = "~" + cwd[len(home) :]
-        else:
-            cwd_short = cwd
-        suffix += f"   {text_color('cwd')}{cwd_short}"
-
-    if SHOW_GIT_BRANCH:
-        git_branch = get_git_branch(cwd)
-        if git_branch:
-            if not (HIDE_DEFAULT_BRANCH and git_branch in ("main", "master")):
-                suffix += f"   {BOLD}{text_color('git')}[{git_branch}]"
-
-    return suffix
-
 
 # =============================================================================
 # TRANSCRIPT PARSING (for comparison with API - remove when bug #13783 is fixed)
@@ -613,8 +623,8 @@ def get_usage_gauge(ratio):
         return f"{bg}{fg}{char}{RESET}"
 
 
-def get_usage_gauge_blocks(ratio):
-    """Horizontal gauge using partial blocks (width set by USAGE_LEFT_BLOCK_GAUGE_WIDTH).
+def get_usage_gauge_blocks(ratio, gauge_width=4):
+    """Horizontal gauge using partial blocks.
 
     Left half: green (shows how far ahead, fills right-to-left from center).
     Right half: orange/red (shows how far behind, fills left-to-right from center).
@@ -624,7 +634,7 @@ def get_usage_gauge_blocks(ratio):
     """
     theme = THEMES[THEME]
     BLOCKS = " ▏▎▍▌▋▊▉█"
-    half = USAGE_LEFT_BLOCK_GAUGE_WIDTH // 2
+    half = gauge_width // 2
     empty_rgb, empty_fb = theme["bar_empty"]
     ahead_key = "usage_light" if ratio >= 1 / 0.75 else "usage_green"
     green_rgb, green_fb = theme[ahead_key]
@@ -681,39 +691,46 @@ def get_usage_gauge_blocks(ratio):
     return "".join(parts) + RESET
 
 
-def format_usage_indicator(usage_data):
-    """Format usage indicator for status line."""
+def format_usage_indicators(usage_data):
+    """Format usage indicators, returning dict of {segment_name: rendered_string}."""
     if usage_data is None:
-        return f"   {text_color('na')}usage: N/A"
+        na_text = f"   {text_color('na')}usage: N/A"
+        return {'usage_5hour': na_text, 'usage_weekly': ''}
     if not usage_data:
-        return ""
+        return {'usage_5hour': '', 'usage_weekly': ''}
 
-    indicators = []
+    results = {}
 
-    # Define limit types to process: (key, window_hours, time_format, show_flag)
+    # Define limit types: (api_key, window_hours, time_format, segment_name)
     # Use NBSP (\u00a0) between day and time for weekly
     limit_configs = [
-        ("five_hour", 5, "%H:%M", SHOW_5H_USAGE_LEFT),
-        ("seven_day", 7 * 24, "%a\u00a0%H:%M", SHOW_WEEKLY_USAGE_LEFT),
+        ("five_hour", 5, "%H:%M", "usage_5hour"),
+        ("seven_day", 7 * 24, "%a\u00a0%H:%M", "usage_weekly"),
     ]
 
-    for key, window_hours, time_fmt, show_flag in limit_configs:
-        if not show_flag:
+    for api_key, window_hours, time_fmt, segment_name in limit_configs:
+        if not _has_segment(segment_name):
+            results[segment_name] = ''
             continue
-        limit = usage_data.get(key)
+
+        opts = _segment_opts(segment_name)
+        limit = usage_data.get(api_key)
         if not limit:
+            results[segment_name] = ''
             continue
 
         utilization_pct = limit.get("utilization", 0)  # 0-100 percentage
         resets_at = limit.get("resets_at")
 
         if not resets_at:
+            results[segment_name] = ''
             continue
 
         # Parse reset time
         try:
             reset_dt = datetime.fromisoformat(resets_at.replace("Z", "+00:00"))
         except ValueError:
+            results[segment_name] = ''
             continue
 
         now = datetime.now(reset_dt.tzinfo)
@@ -727,8 +744,6 @@ def format_usage_indicator(usage_data):
         time_elapsed_pct = max(0, min(100, (elapsed_seconds / window_seconds) * 100))
 
         # Forward-looking ratio: remaining_budget / remaining_time
-        # 1.0 = can sustain 100/window_days per day until reset (green)
-        # < 1.0 = will run out before reset at sustainable rate
         remaining_budget_pct = max(0, 100 - utilization_pct)
         remaining_time_pct = max(0, 100 - time_elapsed_pct)
         if remaining_time_pct > 0:
@@ -741,28 +756,101 @@ def format_usage_indicator(usage_data):
         color = get_usage_color(ratio)
 
         # Override text color for 5h window based on absolute remaining budget
-        # Only override to a worse color than ratio already gives
-        if key == "five_hour":
+        if api_key == "five_hour":
             if remaining_pct <= 5:
-                color = get_usage_color(0)  # red (always worse or equal)
+                color = get_usage_color(0)
             elif remaining_pct <= 10 and ratio >= 0.75:
-                color = get_usage_color(0.8)  # orange (only if ratio isn't already red)
+                color = get_usage_color(0.8)
 
-        if USAGE_LEFT_GAUGE_STYLE == "none":
+        gauge_style = opts.get('gauge', 'blocks')
+        gauge_width = int(opts.get('width', '4'))
+        if gauge_style == "none":
             gauge = ""
-        elif USAGE_LEFT_GAUGE_STYLE == "blocks":
-            gauge = get_usage_gauge_blocks(ratio)
+        elif gauge_style == "blocks":
+            gauge = get_usage_gauge_blocks(ratio, gauge_width)
         else:
             gauge = get_usage_gauge(ratio)
         gauge_part = f"{gauge}\u00a0" if gauge else ""
-        indicators.append(
-            f"{gauge_part}{color}{remaining_pct}\u00a0%\u00a0→\u00a0{reset_label}"
+        results[segment_name] = (
+            f"   {gauge_part}{color}{remaining_pct}\u00a0%\u00a0→\u00a0{reset_label}"
         )
 
-    if not indicators:
-        return ""
+    for seg in ('usage_5hour', 'usage_weekly'):
+        if seg not in results:
+            results[seg] = ''
 
-    return f"   {'\u00a0\u00a0'.join(indicators)}"
+    return results
+
+
+# =============================================================================
+# SEGMENT RENDERERS
+# =============================================================================
+
+
+def _render_model(ctx, opts):
+    return ctx['model_color'] + center_text(ctx['model']) + RESET
+
+
+def _render_progress_bar(ctx, opts):
+    return ctx['fill_fg'] + '█' * ctx['filled'] + ctx['transition'] + RESET + ctx['empty_fg_str'] + '█' * ctx['empty']
+
+
+def _render_percentage(ctx, opts):
+    comparison = ctx.get('pct_comparison', '')
+    if opts.get('fallback') == '1':
+        return RESET + text_color('percent') + f' {ctx["pct"]}\u00a0%' + comparison
+    return RESET + text_color('percent') + f' {ctx["pct"]}\u00a0%'
+
+
+def _render_tokens(ctx, opts):
+    token_comparison = ctx.get('token_comparison', '')
+    if opts.get('fallback') == '1':
+        return ctx['token_display'] + token_comparison
+    return ctx['token_display']
+
+
+def _render_directory(ctx, opts):
+    cwd = ctx.get('cwd')
+    if not cwd:
+        return ''
+    home = os.path.expanduser('~')
+    if cwd.startswith(home):
+        cwd_short = '~' + cwd[len(home):]
+    else:
+        cwd_short = cwd
+    return f'   {text_color("cwd")}{cwd_short}'
+
+
+def _render_git_branch(ctx, opts):
+    cwd = ctx.get('cwd')
+    if not cwd:
+        return ''
+    git_branch = get_git_branch(cwd)
+    if not git_branch:
+        return ''
+    if opts.get('hide_default') == '1' and git_branch in ('main', 'master'):
+        return ''
+    return f'   {BOLD}{text_color("git")}[{git_branch}]'
+
+
+def _render_usage_5hour(ctx, opts):
+    return ctx.get('usage_5hour', '')
+
+
+def _render_usage_weekly(ctx, opts):
+    return ctx.get('usage_weekly', '')
+
+
+SEGMENT_RENDERERS = {
+    'model': _render_model,
+    'progress_bar': _render_progress_bar,
+    'percentage': _render_percentage,
+    'tokens': _render_tokens,
+    'directory': _render_directory,
+    'git_branch': _render_git_branch,
+    'usage_5hour': _render_usage_5hour,
+    'usage_weekly': _render_usage_weekly,
+}
 
 
 # =============================================================================
@@ -778,11 +866,12 @@ def build_progress_bar(
     context_limit,
     transcript_tokens=None,
     calc_pct=None,
-    usage_indicator="",
+    usage_5hour='',
+    usage_weekly='',
 ):
     """Build the full status line string"""
-    bar_length = SESSION_PROGRESS_BAR_WIDTH
-    exact_fill = pct * SESSION_PROGRESS_BAR_WIDTH / 100
+    bar_width = int(_segment_opts('progress_bar').get('width', '12'))
+    exact_fill = pct * bar_width / 100
     filled = int(exact_fill)
     fraction = exact_fill - filled
 
@@ -791,15 +880,19 @@ def build_progress_bar(
     bar_rgb, bar_256 = get_colors_for_percentage(pct)
     model_color = get_model_colors(model)
 
-    # Build comparison suffix - only show if values differ by more than 10%
+    # Build fallback comparison strings (per-segment opts)
+    token_comparison = ""
+    pct_comparison = ""
+    tokens_opts = _segment_opts('tokens')
+    pct_opts = _segment_opts('percentage')
     comparisons = []
     show_comparison = False
-    if SHOW_FALLBACK_INFO and transcript_tokens is not None and total_tokens is not None and total_tokens > 0:
+    if tokens_opts.get('fallback') == '1' and transcript_tokens is not None and total_tokens is not None and total_tokens > 0:
         diff_pct = abs(transcript_tokens - total_tokens) / total_tokens * 100
         if diff_pct > 10:
             comparisons.append(f"{transcript_tokens // 1000}k")
             show_comparison = True
-    if SHOW_FALLBACK_INFO and calc_pct is not None and pct > 0:
+    if pct_opts.get('fallback') == '1' and calc_pct is not None and pct > 0:
         diff_pct = abs(calc_pct - pct) / pct * 100
         if diff_pct > 10:
             comparisons.append(f"{calc_pct}\u00a0%")
@@ -808,9 +901,17 @@ def build_progress_bar(
         theme = THEMES[THEME]
         red_rgb, red_fb = theme["usage_red"]
         red_color = _color(red_rgb, red_fb, is_bg=False)
-        comparison = f"{red_color}\u00a0{{{'\u00a0'.join(comparisons)}}}"
-    else:
-        comparison = ""
+        combined = f"{red_color}\u00a0{{{'\u00a0'.join(comparisons)}}}"
+        # Split comparison parts: token comparison goes with tokens, pct with percentage
+        if len(comparisons) == 2:
+            token_comparison = f"{red_color}\u00a0{{{comparisons[0]}}}"
+            pct_comparison = f"{red_color}\u00a0{{{comparisons[1]}}}"
+        elif tokens_opts.get('fallback') == '1' and transcript_tokens is not None and total_tokens is not None and total_tokens > 0:
+            diff_pct = abs(transcript_tokens - total_tokens) / total_tokens * 100
+            if diff_pct > 10:
+                token_comparison = combined
+        else:
+            pct_comparison = combined
 
     # Token display (may be None if only API percentage available)
     numbers_color = text_color("numbers")
@@ -829,7 +930,7 @@ def build_progress_bar(
     if block_index == 8:
         filled += 1
         transition = ""
-    elif block_index == 0 or filled >= bar_length:
+    elif block_index == 0 or filled >= bar_width:
         transition = ""
     else:
         theme = THEMES[THEME]
@@ -837,23 +938,32 @@ def build_progress_bar(
         bg_empty = _color(empty_rgb, empty_fb, is_bg=True)
         transition = bg_empty + fill_fg + BLOCKS[block_index]
 
-    empty = bar_length - filled - (1 if transition else 0)
+    empty = bar_width - filled - (1 if transition else 0)
+
+    ctx = {
+        'model': model,
+        'model_color': model_color,
+        'fill_fg': fill_fg,
+        'filled': filled,
+        'transition': transition,
+        'empty_fg_str': empty_fg_str,
+        'empty': empty,
+        'pct': pct,
+        'pct_comparison': pct_comparison,
+        'token_display': token_display,
+        'token_comparison': token_comparison,
+        'cwd': cwd,
+        'usage_5hour': usage_5hour,
+        'usage_weekly': usage_weekly,
+    }
 
     parts = []
-    if SHOW_MODEL_NAME:
-        parts.append(model_color + center_text(model) + RESET)
-    if SHOW_SESSION_PROGRESS_BAR:
-        parts.append(fill_fg + "█" * filled)
-        parts.append(transition)
-        parts.append(RESET + empty_fg_str + "█" * empty)
-    if SHOW_SESSION_PERCENTAGE:
-        parts.append(RESET + text_color("percent"))
-        parts.append(f" {pct}\u00a0%")
-    if SHOW_SESSION_TOKENS:
-        parts.append(token_display)
-        parts.append(comparison)
-    parts.append(get_cwd_suffix(cwd))
-    parts.append(usage_indicator)
+    for name, opts in SEGMENTS:
+        renderer = SEGMENT_RENDERERS.get(name)
+        if renderer:
+            result = renderer(ctx, opts)
+            if result:
+                parts.append(result)
     parts.append(RESET)
 
     return "".join(parts)
@@ -861,12 +971,35 @@ def build_progress_bar(
 
 def build_na_line(model, cwd):
     """Build status line when no usage data available"""
+    na_text = f" {text_color('na')}  context size N/A"
+    ctx = {
+        'model': model,
+        'model_color': get_model_colors(model),
+        'cwd': cwd,
+    }
+
+    session_segments = frozenset(('progress_bar', 'percentage', 'tokens'))
     parts = []
-    if SHOW_MODEL_NAME:
-        model_color = get_model_colors(model)
-        parts.append(f"{model_color}{center_text(model)}{RESET}")
-    parts.append(f" {text_color('na')}  context size N/A")
-    parts.append(get_cwd_suffix(cwd))
+    na_inserted = False
+    for name, opts in SEGMENTS:
+        if name == 'model':
+            parts.append(_render_model(ctx, opts))
+        elif name in ('directory', 'git_branch'):
+            if not na_inserted:
+                parts.append(na_text)
+                na_inserted = True
+            renderer = SEGMENT_RENDERERS.get(name)
+            if renderer:
+                result = renderer(ctx, opts)
+                if result:
+                    parts.append(result)
+        elif name in session_segments and not na_inserted:
+            parts.append(na_text)
+            na_inserted = True
+
+    if not na_inserted:
+        parts.append(na_text)
+
     parts.append(RESET)
     return "".join(parts)
 
@@ -952,20 +1085,30 @@ def show_usage_demo():
     print("  ratio >= 1.33: light | 1.0-1.33: green | 0.75-1.0: yellow | < 0.75: red")
     print()
 
-    global USAGE_LEFT_GAUGE_STYLE
-    original_style = USAGE_LEFT_GAUGE_STYLE
+    global SEGMENTS
+    original_segments = SEGMENTS
 
     for name, mock_data in scenarios:
-        USAGE_LEFT_GAUGE_STYLE = "vertical"
-        vertical = format_usage_indicator(mock_data)
-        USAGE_LEFT_GAUGE_STYLE = "blocks"
-        blocks = format_usage_indicator(mock_data)
+        # Temporarily set vertical gauge for demo
+        SEGMENTS = [
+            ('usage_5hour', {'gauge': 'vertical', 'width': '4'}),
+            ('usage_weekly', {'gauge': 'vertical', 'width': '4'}),
+        ]
+        parts = format_usage_indicators(mock_data)
+        vertical = parts['usage_5hour'] + parts['usage_weekly']
+        # Temporarily set blocks gauge for demo
+        SEGMENTS = [
+            ('usage_5hour', {'gauge': 'blocks', 'width': '4'}),
+            ('usage_weekly', {'gauge': 'blocks', 'width': '4'}),
+        ]
+        parts = format_usage_indicators(mock_data)
+        blocks = parts['usage_5hour'] + parts['usage_weekly']
         print(f"{name}:")
         print(f"  vertical:{vertical}{RESET}")
         print(f"  blocks:  {blocks}{RESET}")
         print()
 
-    USAGE_LEFT_GAUGE_STYLE = original_style
+    SEGMENTS = original_segments
 
 
 def show_scale_demo(mode="animate"):
@@ -973,8 +1116,9 @@ def show_scale_demo(mode="animate"):
 
     def show_bar(pct):
         BLOCKS = " ▏▎▍▌▋▊▉█"
-        bar_length = SESSION_PROGRESS_BAR_WIDTH
-        exact_fill = pct * SESSION_PROGRESS_BAR_WIDTH / 100
+        bar_width = int(_segment_opts('progress_bar').get('width', '12'))
+        bar_length = bar_width
+        exact_fill = pct * bar_width / 100
         filled = int(exact_fill)
         fraction = exact_fill - filled
         bar_rgb, bar_256 = get_colors_for_percentage(pct)
@@ -1109,9 +1253,9 @@ def main():
     transcript_path = data.get("transcript_path")
     transcript_tokens = get_tokens_from_transcript(transcript_path)
 
-    # Get usage limits indicator
+    # Get usage limits indicators
     usage_data = fetch_usage_data()
-    usage_indicator = format_usage_indicator(usage_data)
+    usage_parts = format_usage_indicators(usage_data)
 
     print(
         build_progress_bar(
@@ -1122,7 +1266,8 @@ def main():
             context_limit,
             transcript_tokens,
             calc_pct,
-            usage_indicator,
+            usage_5hour=usage_parts['usage_5hour'],
+            usage_weekly=usage_parts['usage_weekly'],
         )
     )
 

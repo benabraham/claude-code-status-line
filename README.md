@@ -58,44 +58,85 @@ All settings can be configured via environment variables with the `SL_` prefix, 
 {
   "statusLine": {
     "type": "command",
-    "command": "SL_THEME=light SL_HIDE_DEFAULT_BRANCH=0 ~/.claude/claude-code-status-line.py"
+    "command": "SL_THEME=light SL_SEGMENTS='model percentage directory' ~/.claude/claude-code-status-line.py"
   }
 }
 ```
 
 Alternatively, edit the defaults at the top of the script.
 
-Boolean values accept `1`/`true`/`yes`/`on` (truthy) or `0`/`false`/`no`/`off` (falsy).
+### Global Settings
 
 | Env variable | Default | Description |
 |---|---|---|
-| `SL_SESSION_PROGRESS_BAR_WIDTH` | `12` | Progress bar width in characters |
 | `SL_THEME` | `dark` | Color theme: `dark` or `light` |
-| `SL_USAGE_LEFT_GAUGE_STYLE` | `blocks` | Usage gauge style: `vertical`, `blocks`, or `none` |
-| `SL_USAGE_LEFT_BLOCK_GAUGE_WIDTH` | `4` | Blocks gauge width in characters (2, 4, 8, or 16) |
 | `SL_USAGE_CACHE_DURATION` | `300` | Usage API cache duration in seconds |
 | `SL_THEME_FILE` | `~/.claude/claude-code-theme.py` | Path to custom theme file (see below) |
 
-### Visibility Toggles
+### Segment Order & Options
 
-Each part of the status line can be shown or hidden:
+Control which segments appear, in what order, and with per-segment options using `SL_SEGMENTS`:
 
-| Env variable | Default | Description |
-|---|---|---|
-| `SL_SHOW_MODEL_NAME` | `1` | Model badge (Opus/Sonnet/Haiku) |
-| `SL_SHOW_SESSION_PROGRESS_BAR` | `1` | Context window progress bar |
-| `SL_SHOW_SESSION_PERCENTAGE` | `1` | Context usage percentage |
-| `SL_SHOW_SESSION_TOKENS` | `1` | Token count (e.g. `84k/200k`) |
-| `SL_SHOW_CURRENT_DIR` | `1` | Working directory path |
-| `SL_SHOW_GIT_BRANCH` | `1` | Git branch indicator |
-| `SL_HIDE_DEFAULT_BRANCH` | `1` | Hide branch when on `main`/`master` |
-| `SL_SHOW_5H_USAGE_LEFT` | `1` | 5-hour session usage gauge |
-| `SL_SHOW_WEEKLY_USAGE_LEFT` | `1` | 7-day weekly usage gauge |
-| `SL_SHOW_FALLBACK_INFO` | `1` | Show fallback values when they differ from API (see below) |
+```
+SL_SEGMENTS="model progress_bar:width=20 percentage tokens directory git_branch usage_5hour usage_weekly"
+```
+
+Each token is `segment_name` optionally followed by `:key=value` pairs. Unknown segment names are silently ignored.
+
+**Default:** `model progress_bar percentage tokens directory git_branch usage_5hour usage_weekly`
+
+| Segment | Description |
+|---|---|
+| `model` | Model badge (Opus/Sonnet/Haiku) |
+| `progress_bar` | Context window progress bar |
+| `percentage` | Context usage percentage |
+| `tokens` | Token count (e.g. `84k/200k`) |
+| `directory` | Working directory path |
+| `git_branch` | Git branch indicator |
+| `usage_5hour` | 5-hour session usage gauge |
+| `usage_weekly` | 7-day weekly usage gauge |
+
+#### Segment options
+
+| Segment | Option | Values | Default | Description |
+|---|---|---|---|---|
+| `progress_bar` | `width` | integer | `12` | Bar width in characters |
+| `git_branch` | `hide_default` | `0`/`1` | `1` | Hide branch on `main`/`master` |
+| `percentage` | `fallback` | `0`/`1` | `1` | Show fallback comparison (see below) |
+| `tokens` | `fallback` | `0`/`1` | `1` | Show fallback comparison (see below) |
+| `usage_5hour` | `gauge` | `vertical`/`blocks`/`none` | `blocks` | Gauge style |
+| `usage_5hour` | `width` | even integer >= 2 | `4` | Gauge width (invalid values reset to 4) |
+| `usage_weekly` | `gauge` | `vertical`/`blocks`/`none` | `blocks` | Gauge style |
+| `usage_weekly` | `width` | even integer >= 2 | `4` | Gauge width (invalid values reset to 4) |
+
+#### Examples
+
+```bash
+# Show only model and percentage
+SL_SEGMENTS='model percentage'
+
+# Reorder: git branch first
+SL_SEGMENTS='git_branch model progress_bar percentage tokens directory'
+
+# Everything except usage gauges
+SL_SEGMENTS='model progress_bar percentage tokens directory git_branch'
+
+# Wide progress bar, no fallback info
+SL_SEGMENTS='model progress_bar:width=20 percentage:fallback=0 tokens:fallback=0 directory'
+
+# Different gauge styles per usage window
+SL_SEGMENTS='model progress_bar percentage usage_5hour:gauge=vertical usage_weekly:gauge=blocks:width=8'
+
+# Show git branch even on main/master
+SL_SEGMENTS='model progress_bar percentage tokens directory git_branch:hide_default=0'
+
+# Empty string disables all segments
+SL_SEGMENTS=''
+```
 
 ### Fallback Info
 
-The script gets context usage from the Claude Code API (`used_percentage`). It also calculates token counts from the conversation transcript as a fallback. When `SHOW_FALLBACK_INFO` is enabled and these two values differ by more than 10%, the fallback value is shown in red curly braces (e.g. `{84k}` or `{42 %}`). This helps spot cases where the API percentage may be inaccurate.
+The script gets context usage from the Claude Code API (`used_percentage`). It also calculates token counts from the conversation transcript as a fallback. When the `fallback` option is enabled on the `percentage` and/or `tokens` segments and these two values differ by more than 10%, the fallback value is shown in red curly braces (e.g. `{84k}` or `{42 %}`). This helps spot cases where the API percentage may be inaccurate.
 
 **Note:** The context window size reported by Claude Code may not always reflect the actual context available. There are known bugs in Claude Code where the reported `used_percentage` or token counts can be inaccurate. The fallback comparison helps detect these discrepancies.
 
