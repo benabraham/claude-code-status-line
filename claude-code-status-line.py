@@ -84,13 +84,17 @@ def _parse_segments(raw):
             if '=' in part:
                 k, v = part.split('=', 1)
                 opts[k] = v
-        if 'width' in opts and name in ('usage_5hour', 'usage_weekly'):
+        if 'width' in opts:
             try:
                 w = int(opts['width'])
-                if w < 2 or w % 2 != 0:
-                    opts['width'] = '4'
+                if name in ('usage_5hour', 'usage_weekly'):
+                    if w < 2 or w % 2 != 0:
+                        opts['width'] = '4'
+                elif name == 'progress_bar':
+                    if w < 1:
+                        opts['width'] = '12'
             except ValueError:
-                opts['width'] = '4'
+                opts['width'] = '4' if name in ('usage_5hour', 'usage_weekly') else '12'
         result.append((name, opts))
     return result
 
