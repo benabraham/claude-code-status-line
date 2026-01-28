@@ -11,11 +11,10 @@ A statusline script for [Claude Code](https://docs.anthropic.com/en/docs/claude-
 ### Vertical gauge style
 ![Vertical gauge](screenshots/dark-vertical.png)
 
-### Progress bar gradient
-![Color gradient](screenshots/gradient.png)
-
 ### Usage gauges
 ![Usage gauges](screenshots/usage-gauges.png)
+
+<video src="https://github.com/user-attachments/assets/1ab9f898-4fd6-4100-9283-23c080057974" controls></video>
 
 ## Features
 
@@ -208,29 +207,29 @@ Preview the progress bar color gradient:
 
 ```bash
 # Animated sweep through 0-100%
-./claude-code-status-line.py --show-scale
+./claude-code-status-line.py --demo-scale
 
 # Static views
-./claude-code-status-line.py --show-scale min   # minimum value per range
-./claude-code-status-line.py --show-scale mid   # midpoint value per range
-./claude-code-status-line.py --show-scale max   # maximum value per range
+./claude-code-status-line.py --demo-scale min   # minimum value per range
+./claude-code-status-line.py --demo-scale mid   # midpoint value per range
+./claude-code-status-line.py --demo-scale max   # maximum value per range
 ```
 
 Preview usage indicator scenarios:
 
 ```bash
-./claude-code-status-line.py --test-usage
+./claude-code-status-line.py --demo-usage
 ```
 
 Animated gauge demos:
 
 ```bash
 # Sweep both gauge types through full ratio range (2.0 → 0.0 → 2.0)
-./claude-code-status-line.py --test-gauge
+./claude-code-status-line.py --demo-gauge
 
 # Usage principle: same % at different time positions in a 5-hour window
 # Shows 10% fixed, 90% fixed, and monotonically rising usage with varying rate
-./claude-code-status-line.py --test-principle
+./claude-code-status-line.py --demo-principle
 ```
 
 ## How It Works

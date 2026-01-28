@@ -12,19 +12,19 @@ There is no build step, test suite, or linter. The script is a standalone execut
 
 ```bash
 # Demo: animated color gradient sweep
-./claude-code-status-line.py --show-scale
+./claude-code-status-line.py --demo-scale
 
 # Demo: static gradient views (min/mid/max per range)
-./claude-code-status-line.py --show-scale mid
+./claude-code-status-line.py --demo-scale mid
 
 # Demo: usage indicator scenarios
-./claude-code-status-line.py --test-usage
+./claude-code-status-line.py --demo-usage
 
 # Demo: gauge sweep (both vertical and blocks, ratio 2.0 → 0.0 → 2.0)
-./claude-code-status-line.py --test-gauge
+./claude-code-status-line.py --demo-gauge
 
 # Demo: usage principle (10%, 90%, and varying usage in 5-hour window)
-./claude-code-status-line.py --test-principle
+./claude-code-status-line.py --demo-principle
 
 # Normal operation: receives JSON on stdin from Claude Code
 echo '{"model":"claude-sonnet-4-20250514","cwd":"/tmp","contextWindow":{"used_percentage":42}}' | ./claude-code-status-line.py

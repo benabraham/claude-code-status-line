@@ -24,13 +24,15 @@ Latest version: https://github.com/benabraham/claude-code-status-line
 """
 
 import json
-import math
 import os
 import re
+import select
 import subprocess
 import sys
 import tempfile
+import termios
 import time
+import tty
 from datetime import datetime, timezone
 
 # =============================================================================
@@ -52,20 +54,24 @@ def _env_int(key, default):
 
 THEME = _env_str("THEME", "dark")
 USAGE_CACHE_DURATION = _env_int("USAGE_CACHE_DURATION", 300)
-THEME_FILE = _env_str("THEME_FILE", os.path.expanduser("~/.claude/claude-code-theme.toml"))
+THEME_FILE = _env_str(
+    "THEME_FILE", os.path.expanduser("~/.claude/claude-code-theme.toml")
+)
 
 # --- Segment system ---
 
-DEFAULT_SEGMENTS = 'model progress_bar percentage tokens directory git_branch usage_5hour usage_weekly'
+DEFAULT_SEGMENTS = (
+    "model progress_bar percentage tokens directory git_branch usage_5hour usage_weekly"
+)
 VALID_SEGMENTS = frozenset(DEFAULT_SEGMENTS.split())
 
 SEGMENT_DEFAULTS = {
-    'progress_bar': {'width': '12'},
-    'git_branch': {'hide_default': '1'},
-    'percentage': {'fallback': '1'},
-    'tokens': {'fallback': '1'},
-    'usage_5hour': {'gauge': 'blocks', 'width': '4'},
-    'usage_weekly': {'gauge': 'blocks', 'width': '4'},
+    "progress_bar": {"width": "12"},
+    "git_branch": {"hide_default": "1"},
+    "percentage": {"fallback": "1"},
+    "tokens": {"fallback": "1"},
+    "usage_5hour": {"gauge": "blocks", "width": "4"},
+    "usage_weekly": {"gauge": "blocks", "width": "4"},
 }
 
 
@@ -78,31 +84,31 @@ def _parse_segments(raw):
         return []
     result = []
     for token in stripped.split():
-        parts = token.split(':')
+        parts = token.split(":")
         name = parts[0]
         if name not in VALID_SEGMENTS:
             continue
         opts = dict(SEGMENT_DEFAULTS.get(name, {}))
         for part in parts[1:]:
-            if '=' in part:
-                k, v = part.split('=', 1)
+            if "=" in part:
+                k, v = part.split("=", 1)
                 opts[k] = v
-        if 'width' in opts:
+        if "width" in opts:
             try:
-                w = int(opts['width'])
-                if name in ('usage_5hour', 'usage_weekly'):
+                w = int(opts["width"])
+                if name in ("usage_5hour", "usage_weekly"):
                     if w < 2 or w % 2 != 0 or w > 128:
-                        opts['width'] = '4'
-                elif name == 'progress_bar':
+                        opts["width"] = "4"
+                elif name == "progress_bar":
                     if w < 1 or w > 128:
-                        opts['width'] = '12'
+                        opts["width"] = "12"
             except ValueError:
-                opts['width'] = '4' if name in ('usage_5hour', 'usage_weekly') else '12'
+                opts["width"] = "4" if name in ("usage_5hour", "usage_weekly") else "12"
         result.append((name, opts))
     return result
 
 
-SEGMENTS = _parse_segments(os.environ.get('SL_SEGMENTS'))
+SEGMENTS = _parse_segments(os.environ.get("SL_SEGMENTS"))
 
 
 def _has_segment(name):
@@ -114,6 +120,7 @@ def _segment_opts(name):
         if n == name:
             return opts
     return SEGMENT_DEFAULTS.get(name, {})
+
 
 # =============================================================================
 # HEX COLOR CONVERSION (needed before theme loading)
@@ -278,7 +285,7 @@ def _load_custom_theme():
             return
 
     try:
-        with open(THEME_FILE, 'rb') as f:
+        with open(THEME_FILE, "rb") as f:
             ns = tomllib.load(f)
     except Exception:
         return
@@ -287,7 +294,7 @@ def _load_custom_theme():
     overrides = {}
 
     def _is_hex(v):
-        return isinstance(v, str) and v.startswith('#') and len(v) == 7
+        return isinstance(v, str) and v.startswith("#") and len(v) == 7
 
     # Model badges: ["bg_hex", "fg_hex"] → (("bg_hex", 256), ("fg_hex", 256))
     for key in ("model_sonnet", "model_opus", "model_haiku", "model_default"):
@@ -298,7 +305,10 @@ def _load_custom_theme():
             bg_hex, fg_hex = val
             if not _is_hex(bg_hex) or not _is_hex(fg_hex):
                 continue
-            overrides[key] = ((bg_hex, hex_to_256(bg_hex)), (fg_hex, hex_to_256(fg_hex)))
+            overrides[key] = (
+                (bg_hex, hex_to_256(bg_hex)),
+                (fg_hex, hex_to_256(fg_hex)),
+            )
 
     # Simple colors: "hex" → ("hex", 256)
     for key in ("bar_empty", "usage_light", "usage_green", "usage_yellow", "usage_red"):
@@ -466,14 +476,13 @@ def get_git_branch(cwd):
         )
         if result.returncode == 0:
             branch = result.stdout.strip()
-            branch = re.sub(r'\x1b\[[0-9;]*m', '', branch)
+            branch = re.sub(r"\x1b\[[0-9;]*m", "", branch)
             if branch:
                 return branch
             return None
     except Exception:
         pass
     return None
-
 
 
 # =============================================================================
@@ -575,7 +584,7 @@ def fetch_usage_data():
     token = get_oauth_token()
     if not token:
         return None
-    if not all(c.isalnum() or c in '-._~+/=' for c in token):
+    if not all(c.isalnum() or c in "-._~+/=" for c in token):
         return None
 
     # Fetch from API using curl (token passed via --config stdin to hide from ps)
@@ -585,11 +594,16 @@ def fetch_usage_data():
                 "curl",
                 "-s",
                 "-f",
-                "--config", "-",
-                "-H", "Accept: application/json",
-                "-H", "Content-Type: application/json",
-                "-H", "User-Agent: claude-code/2.0.32",
-                "-H", "anthropic-beta: oauth-2025-04-20",
+                "--config",
+                "-",
+                "-H",
+                "Accept: application/json",
+                "-H",
+                "Content-Type: application/json",
+                "-H",
+                "User-Agent: claude-code/2.0.32",
+                "-H",
+                "anthropic-beta: oauth-2025-04-20",
                 "https://api.anthropic.com/api/oauth/usage",
             ],
             input=f'header = "Authorization: Bearer {token}"\n',
@@ -607,7 +621,7 @@ def fetch_usage_data():
         try:
             cache_dir = os.path.dirname(USAGE_CACHE_PATH)
             fd, tmp_path = tempfile.mkstemp(dir=cache_dir)
-            with os.fdopen(fd, 'w') as f:
+            with os.fdopen(fd, "w") as f:
                 json.dump({"timestamp": time.time(), "data": data}, f)
             os.replace(tmp_path, USAGE_CACHE_PATH)
         except (IOError, OSError):
@@ -756,9 +770,9 @@ def format_usage_indicators(usage_data):
     """Format usage indicators, returning dict of {segment_name: rendered_string}."""
     if usage_data is None:
         na_text = f"   {text_color('na')}usage: N/A"
-        return {'usage_5hour': na_text, 'usage_weekly': ''}
+        return {"usage_5hour": na_text, "usage_weekly": ""}
     if not usage_data:
-        return {'usage_5hour': '', 'usage_weekly': ''}
+        return {"usage_5hour": "", "usage_weekly": ""}
 
     results = {}
 
@@ -771,20 +785,20 @@ def format_usage_indicators(usage_data):
 
     for api_key, window_hours, time_fmt, segment_name in limit_configs:
         if not _has_segment(segment_name):
-            results[segment_name] = ''
+            results[segment_name] = ""
             continue
 
         opts = _segment_opts(segment_name)
         limit = usage_data.get(api_key)
         if not limit:
-            results[segment_name] = ''
+            results[segment_name] = ""
             continue
 
         utilization_pct = limit.get("utilization", 0)  # 0-100 percentage
         resets_at = limit.get("resets_at")
 
         if not resets_at:
-            results[segment_name] = ''
+            results[segment_name] = ""
             continue
 
         # Parse reset time
@@ -793,7 +807,7 @@ def format_usage_indicators(usage_data):
             if reset_dt.tzinfo is None:
                 reset_dt = reset_dt.replace(tzinfo=timezone.utc)
         except ValueError:
-            results[segment_name] = ''
+            results[segment_name] = ""
             continue
 
         now = datetime.now(timezone.utc)
@@ -825,8 +839,8 @@ def format_usage_indicators(usage_data):
             elif remaining_pct <= 10 and ratio >= 0.75:
                 color = get_usage_color(0.8)
 
-        gauge_style = opts.get('gauge', 'blocks')
-        gauge_width = int(opts.get('width', '4'))
+        gauge_style = opts.get("gauge", "blocks")
+        gauge_width = int(opts.get("width", "4"))
         if gauge_style == "none":
             gauge = ""
         elif gauge_style == "blocks":
@@ -838,9 +852,9 @@ def format_usage_indicators(usage_data):
             f"   {gauge_part}{color}{remaining_pct}\u00a0%\u00a0→\u00a0{reset_label}"
         )
 
-    for seg in ('usage_5hour', 'usage_weekly'):
+    for seg in ("usage_5hour", "usage_weekly"):
         if seg not in results:
-            results[seg] = ''
+            results[seg] = ""
 
     return results
 
@@ -851,68 +865,75 @@ def format_usage_indicators(usage_data):
 
 
 def _render_model(ctx, opts):
-    return ctx['model_color'] + center_text(ctx['model']) + RESET
+    return ctx["model_color"] + center_text(ctx["model"]) + RESET
 
 
 def _render_progress_bar(ctx, opts):
-    return ctx['fill_fg'] + '█' * ctx['filled'] + ctx['transition'] + RESET + ctx['empty_fg_str'] + '█' * ctx['empty']
+    return (
+        ctx["fill_fg"]
+        + "█" * ctx["filled"]
+        + ctx["transition"]
+        + RESET
+        + ctx["empty_fg_str"]
+        + "█" * ctx["empty"]
+    )
 
 
 def _render_percentage(ctx, opts):
-    comparison = ctx.get('pct_comparison', '')
-    if opts.get('fallback') == '1':
-        return RESET + text_color('percent') + f' {ctx["pct"]}\u00a0%' + comparison
-    return RESET + text_color('percent') + f' {ctx["pct"]}\u00a0%'
+    comparison = ctx.get("pct_comparison", "")
+    if opts.get("fallback") == "1":
+        return RESET + text_color("percent") + f" {ctx['pct']}\u00a0%" + comparison
+    return RESET + text_color("percent") + f" {ctx['pct']}\u00a0%"
 
 
 def _render_tokens(ctx, opts):
-    token_comparison = ctx.get('token_comparison', '')
-    if opts.get('fallback') == '1':
-        return ctx['token_display'] + token_comparison
-    return ctx['token_display']
+    token_comparison = ctx.get("token_comparison", "")
+    if opts.get("fallback") == "1":
+        return ctx["token_display"] + token_comparison
+    return ctx["token_display"]
 
 
 def _render_directory(ctx, opts):
-    cwd = ctx.get('cwd')
+    cwd = ctx.get("cwd")
     if not cwd:
-        return ''
-    home = os.path.expanduser('~')
+        return ""
+    home = os.path.expanduser("~")
     if cwd.startswith(home):
-        cwd_short = '~' + cwd[len(home):]
+        cwd_short = "~" + cwd[len(home) :]
     else:
         cwd_short = cwd
-    return f'   {text_color("cwd")}{cwd_short}'
+    return f"   {text_color('cwd')}{cwd_short}"
 
 
 def _render_git_branch(ctx, opts):
-    cwd = ctx.get('cwd')
+    cwd = ctx.get("cwd")
     if not cwd:
-        return ''
+        return ""
     git_branch = get_git_branch(cwd)
     if not git_branch:
-        return ''
-    if opts.get('hide_default') == '1' and git_branch in ('main', 'master'):
-        return ''
-    return f'   {BOLD}{text_color("git")}[{git_branch}]'
+        return ""
+    if opts.get("hide_default") == "1" and git_branch in ("main", "master"):
+        return ""
+    return f"   {BOLD}{text_color('git')}[{git_branch}]"
 
 
 def _render_usage_5hour(ctx, opts):
-    return ctx.get('usage_5hour', '')
+    return ctx.get("usage_5hour", "")
 
 
 def _render_usage_weekly(ctx, opts):
-    return ctx.get('usage_weekly', '')
+    return ctx.get("usage_weekly", "")
 
 
 SEGMENT_RENDERERS = {
-    'model': _render_model,
-    'progress_bar': _render_progress_bar,
-    'percentage': _render_percentage,
-    'tokens': _render_tokens,
-    'directory': _render_directory,
-    'git_branch': _render_git_branch,
-    'usage_5hour': _render_usage_5hour,
-    'usage_weekly': _render_usage_weekly,
+    "model": _render_model,
+    "progress_bar": _render_progress_bar,
+    "percentage": _render_percentage,
+    "tokens": _render_tokens,
+    "directory": _render_directory,
+    "git_branch": _render_git_branch,
+    "usage_5hour": _render_usage_5hour,
+    "usage_weekly": _render_usage_weekly,
 }
 
 
@@ -929,11 +950,11 @@ def build_progress_bar(
     context_limit,
     transcript_tokens=None,
     calc_pct=None,
-    usage_5hour='',
-    usage_weekly='',
+    usage_5hour="",
+    usage_weekly="",
 ):
     """Build the full status line string"""
-    bar_width = max(1, min(128, int(_segment_opts('progress_bar').get('width', '12'))))
+    bar_width = max(1, min(128, int(_segment_opts("progress_bar").get("width", "12"))))
     exact_fill = pct * bar_width / 100
     filled = int(exact_fill)
     fraction = exact_fill - filled
@@ -946,17 +967,22 @@ def build_progress_bar(
     # Build fallback comparison strings (per-segment opts)
     token_comparison = ""
     pct_comparison = ""
-    tokens_opts = _segment_opts('tokens')
-    pct_opts = _segment_opts('percentage')
+    tokens_opts = _segment_opts("tokens")
+    pct_opts = _segment_opts("percentage")
     has_token_diff = False
     has_pct_diff = False
 
-    if tokens_opts.get('fallback') == '1' and transcript_tokens is not None and total_tokens is not None and total_tokens > 0:
+    if (
+        tokens_opts.get("fallback") == "1"
+        and transcript_tokens is not None
+        and total_tokens is not None
+        and total_tokens > 0
+    ):
         diff_pct = abs(transcript_tokens - total_tokens) / total_tokens * 100
         if diff_pct > 10:
             has_token_diff = True
 
-    if pct_opts.get('fallback') == '1' and calc_pct is not None and pct > 0:
+    if pct_opts.get("fallback") == "1" and calc_pct is not None and pct > 0:
         diff_pct = abs(calc_pct - pct) / pct * 100
         if diff_pct > 10:
             has_pct_diff = True
@@ -999,20 +1025,20 @@ def build_progress_bar(
     empty = bar_width - filled - (1 if transition else 0)
 
     ctx = {
-        'model': model,
-        'model_color': model_color,
-        'fill_fg': fill_fg,
-        'filled': filled,
-        'transition': transition,
-        'empty_fg_str': empty_fg_str,
-        'empty': empty,
-        'pct': pct,
-        'pct_comparison': pct_comparison,
-        'token_display': token_display,
-        'token_comparison': token_comparison,
-        'cwd': cwd,
-        'usage_5hour': usage_5hour,
-        'usage_weekly': usage_weekly,
+        "model": model,
+        "model_color": model_color,
+        "fill_fg": fill_fg,
+        "filled": filled,
+        "transition": transition,
+        "empty_fg_str": empty_fg_str,
+        "empty": empty,
+        "pct": pct,
+        "pct_comparison": pct_comparison,
+        "token_display": token_display,
+        "token_comparison": token_comparison,
+        "cwd": cwd,
+        "usage_5hour": usage_5hour,
+        "usage_weekly": usage_weekly,
     }
 
     parts = []
@@ -1031,18 +1057,18 @@ def build_na_line(model, cwd):
     """Build status line when no usage data available"""
     na_text = f" {text_color('na')}  context size N/A"
     ctx = {
-        'model': model,
-        'model_color': get_model_colors(model),
-        'cwd': cwd,
+        "model": model,
+        "model_color": get_model_colors(model),
+        "cwd": cwd,
     }
 
-    session_segments = frozenset(('progress_bar', 'percentage', 'tokens'))
+    session_segments = frozenset(("progress_bar", "percentage", "tokens"))
     parts = []
     na_inserted = False
     for name, opts in SEGMENTS:
-        if name == 'model':
+        if name == "model":
             parts.append(_render_model(ctx, opts))
-        elif name in ('directory', 'git_branch'):
+        elif name in ("directory", "git_branch"):
             if not na_inserted:
                 parts.append(na_text)
                 na_inserted = True
@@ -1065,6 +1091,15 @@ def build_na_line(model, cwd):
 # =============================================================================
 # DEMO MODE
 # =============================================================================
+
+
+def _key_pressed(timeout):
+    """Check if a key was pressed within timeout seconds (non-blocking)."""
+    dr, _, _ = select.select([sys.stdin], [], [], timeout)
+    if dr:
+        sys.stdin.read(1)  # consume the key
+        return True
+    return False
 
 
 def show_usage_demo():
@@ -1138,35 +1173,38 @@ def show_usage_demo():
         ),
     ]
 
-    print("Usage Indicator Demo (forward-looking ratio = remaining budget / remaining time):")
+    print()
+    print(
+        "Usage Indicator Demo (forward-looking ratio = remaining budget / remaining time):"
+    )
     print("=" * 75)
     print("  ratio >= 1.33: light | 1.0-1.33: green | 0.75-1.0: yellow | < 0.75: red")
     print()
 
     global SEGMENTS
     original_segments = SEGMENTS
-
     for name, mock_data in scenarios:
         # Temporarily set vertical gauge for demo
         SEGMENTS = [
-            ('usage_5hour', {'gauge': 'vertical', 'width': '4'}),
-            ('usage_weekly', {'gauge': 'vertical', 'width': '4'}),
+            ("usage_5hour", {"gauge": "vertical", "width": "4"}),
+            ("usage_weekly", {"gauge": "vertical", "width": "4"}),
         ]
         parts = format_usage_indicators(mock_data)
-        vertical = parts['usage_5hour'] + parts['usage_weekly']
+        vertical = parts["usage_5hour"] + parts["usage_weekly"]
         # Temporarily set blocks gauge for demo
         SEGMENTS = [
-            ('usage_5hour', {'gauge': 'blocks', 'width': '4'}),
-            ('usage_weekly', {'gauge': 'blocks', 'width': '4'}),
+            ("usage_5hour", {"gauge": "blocks", "width": "4"}),
+            ("usage_weekly", {"gauge": "blocks", "width": "4"}),
         ]
         parts = format_usage_indicators(mock_data)
-        blocks = parts['usage_5hour'] + parts['usage_weekly']
+        blocks = parts["usage_5hour"] + parts["usage_weekly"]
         print(f"{name}:")
         print(f"  vertical:{vertical}{RESET}")
         print(f"  blocks:  {blocks}{RESET}")
         print()
 
     SEGMENTS = original_segments
+    print()
 
 
 def show_scale_demo(mode="animate"):
@@ -1174,7 +1212,9 @@ def show_scale_demo(mode="animate"):
 
     def show_bar(pct):
         BLOCKS = " ▏▎▍▌▋▊▉█"
-        bar_width = max(1, min(128, int(_segment_opts('progress_bar').get('width', '12'))))
+        bar_width = max(
+            1, min(128, int(_segment_opts("progress_bar").get("width", "12")))
+        )
         bar_length = bar_width
         exact_fill = pct * bar_width / 100
         filled = int(exact_fill)
@@ -1208,13 +1248,26 @@ def show_scale_demo(mode="animate"):
         return bar
 
     if mode == "animate":
+        print()
+        print("\033[?25l", end="", flush=True)  # hide cursor
+        old_settings = termios.tcgetattr(sys.stdin)
         try:
-            while True:
+            tty.setcbreak(sys.stdin.fileno())
+            running = True
+            while running:
                 for pct in range(101):
                     print(f"\r{pct:3d}%: {show_bar(pct)}", end="", flush=True)
-                    time.sleep(0.1)
-                time.sleep(0.5)
+                    if _key_pressed(0.1):
+                        running = False
+                        break
+                if running:
+                    if _key_pressed(0.5):
+                        running = False
         except KeyboardInterrupt:
+            pass
+        finally:
+            termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+            print("\033[?25h")  # show cursor
             print()
     elif mode in ("min", "max", "mid"):
         ranges = [
@@ -1229,11 +1282,13 @@ def show_scale_demo(mode="animate"):
             (80, 89),
             (90, 100),
         ]
+        print()
         print(f"Color Scale Demo ({mode} value):")
         print()
         for lo, hi in ranges:
             pct = lo if mode == "min" else hi if mode == "max" else (lo + hi) // 2
             print(f"{lo:3d}-{hi:3d}%: {show_bar(pct)}")
+        print()
     else:
         print(f"Error: Invalid mode '{mode}'. Use: min, max, mid, or animate")
         sys.exit(1)
@@ -1253,11 +1308,16 @@ def show_gauge_sweep_demo():
 
     num_lines = 3  # blank, content, blank
 
+    print()
+    print("\033[?25l", end="", flush=True)  # hide cursor
     for _ in range(num_lines):
         print()
 
+    old_settings = termios.tcgetattr(sys.stdin)
     try:
-        while True:
+        tty.setcbreak(sys.stdin.fileno())
+        running = True
+        while running:
             for ratio in steps:
                 if ratio >= 1 / 0.75:
                     zone = "light"
@@ -1275,14 +1335,18 @@ def show_gauge_sweep_demo():
                 sys.stdout.write(f"{CL}\n")
                 label = f"ratio: {ratio:.2f}  ({zone})"
                 sys.stdout.write(
-                    f"  {vertical}{RESET}    "
-                    f"{label:<24s}    "
-                    f"{blocks}{RESET}{CL}\n"
+                    f"  {vertical}{RESET}    {label:<24s}    {blocks}{RESET}{CL}\n"
                 )
                 sys.stdout.write(f"{CL}\n")
                 sys.stdout.flush()
-                time.sleep(0.03)
+                if _key_pressed(0.03):
+                    running = False
+                    break
     except KeyboardInterrupt:
+        pass
+    finally:
+        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+        print("\033[?25h")  # show cursor
         print()
 
 
@@ -1293,29 +1357,42 @@ def show_usage_principle_demo():
     NBSP = "\u00a0"
 
     window_min = 300  # 5 hours
-    start_t = 10
-    end_t = 290
+    start_t = 0
+    end_t = 300
     window_start_h = 10  # window is 10:00 – 15:00
     reset_label = "15:00"
 
-    # Precompute monotonic usage curve with breaks and varying rate
+    # Precompute usage curve with hardcoded segments (time in minutes, rate multiplier)
+    # 0=no usage, 0.5=slow, 2.5=intensive
+    segments = [
+        (0, 0),
+        (50, 2.2),
+        (120, 0.2),
+        (180, 0),
+        (220, 1.6),
+    ]
     base_rate = 100 / window_min
-    osc_P = 100
-    breaks = [(75, 95), (185, 210)]  # "not using" periods
-    osc_curve = []  # (usage, rate) per minute
+    usage_curve = []  # (usage, rate) per minute
     usage = 0.0
+    ran_out_at = None  # track when budget first hits 100%
     for step_t in range(window_min + 1):
-        in_break = any(s <= step_t < e for s, e in breaks)
-        if in_break:
-            rate = 0.0
-        else:
-            rate = base_rate * (1 + 0.8 * math.sin(2 * math.pi * step_t / osc_P))
-        osc_curve.append((min(100, usage), rate))
+        # Find current segment
+        multiplier = 0
+        for seg_start, seg_mult in reversed(segments):
+            if step_t >= seg_start:
+                multiplier = seg_mult
+                break
+        rate = base_rate * multiplier
+        usage_curve.append((min(100, usage), rate))
+        if ran_out_at is None and usage >= 100:
+            ran_out_at = step_t
         usage += rate
 
     # header + 3 x (blank + label + gauges) = 10 lines
     num_lines = 10
 
+    print()
+    print("\033[?25l", end="", flush=True)  # hide cursor
     for _ in range(num_lines):
         print()
 
@@ -1323,14 +1400,17 @@ def show_usage_principle_demo():
         color = get_usage_color(ratio)
         v = get_usage_gauge(ratio)
         b = get_usage_gauge_blocks(ratio, gauge_width=8)
-        pct_str = str(remaining_pct).rjust(3).replace(' ', NBSP)
+        pct_str = str(remaining_pct).rjust(3).replace(" ", NBSP)
         return (
             f"{PAD}{v}{RESET}  {b}{RESET}"
             f" {color}{pct_str}{NBSP}%{NBSP}\u2192{NBSP}{reset_label}{RESET}"
         )
 
+    old_settings = termios.tcgetattr(sys.stdin)
     try:
-        while True:
+        tty.setcbreak(sys.stdin.fileno())
+        running = True
+        while running:
             for t in range(start_t, end_t + 1, 2):
                 clock_h, clock_m = divmod(window_start_h * 60 + t, 60)
                 rh, rm = divmod(window_min - t, 60)
@@ -1356,26 +1436,46 @@ def show_usage_principle_demo():
                 sys.stdout.write(f"90% usage{CL}\n")
                 sys.stdout.write(f"{gauge_line(ratio_90, 10, reset_label)}{CL}\n")
 
-                # Monotonically rising usage with varying rate and breaks
-                osc_usage, osc_rate = osc_curve[t]
-                osc_remaining_pct = round(100 - osc_usage)
-                if remaining_time_pct > 0.1:
-                    osc_ratio = osc_remaining_pct / remaining_time_pct
+                # Varying usage rate
+                cur_usage, cur_rate = usage_curve[t]
+                cur_remaining_pct = round(100 - cur_usage)
+                if cur_remaining_pct <= 0:
+                    cur_ratio = 0  # ran out = fully red
+                elif remaining_time_pct > 0.1:
+                    cur_ratio = cur_remaining_pct / remaining_time_pct
                 else:
-                    osc_ratio = 2.0 if osc_remaining_pct > 0 else 1.0
-                if osc_rate == 0:
+                    cur_ratio = 2.0  # time's up but budget left = ahead
+                if cur_remaining_pct <= 0:
+                    if ran_out_at is not None:
+                        ro_h, ro_m = divmod(window_start_h * 60 + ran_out_at, 60)
+                        intensity = f"ran out at {ro_h}:{ro_m:02d}"
+                    else:
+                        intensity = "ran out"
+                elif cur_rate == 0:
                     intensity = "not using"
-                elif osc_rate > base_rate:
-                    intensity = "more intensive usage now"
+                elif cur_rate > base_rate:
+                    intensity = "intensive"
                 else:
-                    intensity = "less intensive usage now"
+                    intensity = "light"
                 sys.stdout.write(f"{CL}\n")
-                sys.stdout.write(f"{round(osc_usage):2d}% usage — {intensity}{CL}\n")
-                sys.stdout.write(f"{gauge_line(osc_ratio, osc_remaining_pct, reset_label)}{CL}\n")
+                sys.stdout.write(f"{round(cur_usage):2d}% usage — {intensity}{CL}\n")
+                sys.stdout.write(
+                    f"{gauge_line(cur_ratio, cur_remaining_pct, reset_label)}{CL}\n"
+                )
 
                 sys.stdout.flush()
-                time.sleep(0.1)
+                delay = 1.0 if t == 0 else 0.1
+                if _key_pressed(delay):
+                    running = False
+                    break
+            # Pause at end before restarting
+            if running and _key_pressed(4.0):
+                running = False
     except KeyboardInterrupt:
+        pass
+    finally:
+        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+        print("\033[?25h")  # show cursor
         print()
 
 
@@ -1398,16 +1498,16 @@ def main():
 
     # Handle demo modes
     if len(sys.argv) > 1:
-        if sys.argv[1] == "--show-scale":
+        if sys.argv[1] == "--demo-scale":
             show_scale_demo(sys.argv[2] if len(sys.argv) > 2 else "animate")
             return
-        if sys.argv[1] == "--test-usage":
+        if sys.argv[1] == "--demo-usage":
             show_usage_demo()
             return
-        if sys.argv[1] == "--test-gauge":
+        if sys.argv[1] == "--demo-gauge":
             show_gauge_sweep_demo()
             return
-        if sys.argv[1] == "--test-principle":
+        if sys.argv[1] == "--demo-principle":
             show_usage_principle_demo()
             return
 
@@ -1470,8 +1570,8 @@ def main():
             context_limit,
             transcript_tokens,
             calc_pct,
-            usage_5hour=usage_parts['usage_5hour'],
-            usage_weekly=usage_parts['usage_weekly'],
+            usage_5hour=usage_parts["usage_5hour"],
+            usage_weekly=usage_parts["usage_weekly"],
         )
     )
 
