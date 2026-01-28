@@ -41,7 +41,10 @@ def _env_str(key, default):
 
 
 def _env_int(key, default):
-    return int(os.environ.get(f"SL_{key}", default))
+    try:
+        return int(os.environ.get(f"SL_{key}", default))
+    except (ValueError, TypeError):
+        return default
 
 
 THEME = _env_str("THEME", "dark")
