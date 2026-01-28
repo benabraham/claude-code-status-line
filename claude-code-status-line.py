@@ -89,10 +89,10 @@ def _parse_segments(raw):
             try:
                 w = int(opts['width'])
                 if name in ('usage_5hour', 'usage_weekly'):
-                    if w < 2 or w % 2 != 0:
+                    if w < 2 or w % 2 != 0 or w > 128:
                         opts['width'] = '4'
                 elif name == 'progress_bar':
-                    if w < 1:
+                    if w < 1 or w > 128:
                         opts['width'] = '12'
             except ValueError:
                 opts['width'] = '4' if name in ('usage_5hour', 'usage_weekly') else '12'
@@ -934,7 +934,7 @@ def build_progress_bar(
     usage_weekly='',
 ):
     """Build the full status line string"""
-    bar_width = int(_segment_opts('progress_bar').get('width', '12'))
+    bar_width = max(1, min(128, int(_segment_opts('progress_bar').get('width', '12'))))
     exact_fill = pct * bar_width / 100
     filled = int(exact_fill)
     fraction = exact_fill - filled
@@ -1180,7 +1180,7 @@ def show_scale_demo(mode="animate"):
 
     def show_bar(pct):
         BLOCKS = " ▏▎▍▌▋▊▉█"
-        bar_width = int(_segment_opts('progress_bar').get('width', '12'))
+        bar_width = max(1, min(128, int(_segment_opts('progress_bar').get('width', '12'))))
         bar_length = bar_width
         exact_fill = pct * bar_width / 100
         filled = int(exact_fill)
