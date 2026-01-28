@@ -26,6 +26,7 @@ Latest version: https://github.com/benabraham/claude-code-status-line
 import json
 import math
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -465,6 +466,7 @@ def get_git_branch(cwd):
         )
         if result.returncode == 0:
             branch = result.stdout.strip()
+            branch = re.sub(r'\x1b\[[0-9;]*m', '', branch)
             if branch:
                 return branch
             return None
