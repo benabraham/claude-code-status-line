@@ -32,7 +32,7 @@ Key sections in `claude-code-status-line.py` (~1,150 lines):
 
 - **Lines 33-107**: Configuration — `SL_THEME`/`SL_USAGE_CACHE_DURATION`/`SL_THEME_FILE` globals, then `SL_SEGMENTS` parsing (`_parse_segments`, `_has_segment`, `_segment_opts`)
 - **Lines ~110-185**: Color conversion (`hex_to_rgb`, `hex_to_256`) and truecolor/256-color terminal detection via `COLORTERM` env var
-- **Lines 186+**: Theme system — `THEMES` dict (dark/light, Nord-inspired), `_load_custom_theme()` loads optional `~/.claude/claude-code-theme.py`
+- **Lines 186+**: Theme system — `THEMES` dict (dark/light, Nord-inspired), `_load_custom_theme()` loads optional `~/.claude/claude-code-theme.toml`
 - **Lines ~370**: `get_git_branch()` — subprocess call to `git branch --show-current`
 - **Lines ~497**: `fetch_usage_data()` — OAuth API call via `curl` subprocess, cached to `~/.claude/.usage_cache.json` for `USAGE_CACHE_DURATION` seconds
 - **Lines ~569-682**: Usage gauge rendering — vertical (block chars ▁▂▃▄▅▆▇█) and horizontal blocks styles with forward-looking ratio logic
@@ -47,7 +47,7 @@ Key sections in `claude-code-status-line.py` (~1,150 lines):
 - **Segment system**: `SL_SEGMENTS` env var controls visibility, order, and per-segment options. Parsed into `[(name, {opts}), ...]` list. Each segment has a renderer function receiving `(ctx, opts)`. Unknown names silently filtered.
 - **Configuration**: global settings via `SL_THEME`, `SL_USAGE_CACHE_DURATION`, `SL_THEME_FILE`. All per-segment config (bar width, gauge style, fallback display, hide default branch) via colon-separated options in `SL_SEGMENTS`.
 - **Color handling**: hex colors converted to both truecolor RGB escape sequences and 256-color fallbacks. Theme colors are always hex strings; conversion happens at render time.
-- **Custom themes**: loaded via `exec()` from a Python file, only the defined variables override the base theme.
+- **Custom themes**: loaded via `tomllib` from a TOML file (Python 3.11+), only the defined keys override the base theme.
 - **Progress bar precision**: Unicode fractional blocks (▏▎▍▌▋▊▉█) for sub-character precision with gradient color interpolation across 10 thresholds.
 - **Credential sources**: macOS Keychain (`security` command) → `~/.claude/.credentials.json` fallback.
 - **Data source fallbacks**: API `used_percentage` is primary; transcript token parsing is fallback. Discrepancies >10% shown in red curly braces when `percentage:fallback=1` / `tokens:fallback=1`.

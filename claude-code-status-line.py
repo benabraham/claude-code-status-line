@@ -50,7 +50,7 @@ def _env_int(key, default):
 
 THEME = _env_str("THEME", "dark")
 USAGE_CACHE_DURATION = _env_int("USAGE_CACHE_DURATION", 300)
-THEME_FILE = _env_str("THEME_FILE", os.path.expanduser("~/.claude/claude-code-theme.py"))
+THEME_FILE = _env_str("THEME_FILE", os.path.expanduser("~/.claude/claude-code-theme.toml"))
 
 # --- Segment system ---
 
@@ -228,64 +228,100 @@ THEMES = {
 
 
 def _load_custom_theme():
-    """Load custom theme from external Python file and merge into THEMES.
+    """Load custom theme from TOML file and merge into THEMES.
 
-    The file defines bare variables with hex colors only (no 256 fallbacks needed).
-    Only defined variables override the base theme; everything else inherits.
+    Only defined keys override the base theme; everything else inherits.
 
-    Expected variables:
-        model_sonnet = "#bg", "#fg"     # tuple of (bg_hex, fg_hex)
-        model_opus = "#bg", "#fg"
-        model_haiku = "#bg", "#fg"
-        model_default = "#bg", "#fg"
-        bar_empty = "#hex"
-        text_percent = "#hex"
-        text_numbers = "#hex"
-        text_cwd = "#hex"
-        text_git = "#hex"
-        text_na = "#hex"
-        usage_light = "#hex"
-        usage_green = "#hex"
-        usage_yellow = "#hex"
-        usage_red = "#hex"
-        gradient = [(threshold, "#hex"), ...]
+    Expected TOML format:
+        # Model badges: [bg_hex, fg_hex]
+        model_sonnet = ["#A3BE8C", "#2E3440"]
+        model_opus = ["#88C0D0", "#2E3440"]
+        model_haiku = ["#4C566A", "#ECEFF4"]
+        model_default = ["#D8DEE9", "#2E3440"]
+
+        # Simple colors
+        bar_empty = "#292c33"
+        usage_light = "#88C0D0"
+        usage_green = "#A3BE8C"
+        usage_yellow = "#EBCB8B"
+        usage_red = "#BF616A"
+
+        # Text colors
+        text_percent = "#5E81AC"
+        text_numbers = "#5E81AC"
+        text_cwd = "#81A1C1"
+        text_git = "#B48EAD"
+        text_na = "#D08770"
+
+        # Gradient: array of {threshold, color} tables
+        gradient = [
+            {threshold = 10, color = "#183522"},
+            {threshold = 20, color = "#153E21"},
+        ]
     """
     if not os.path.isfile(THEME_FILE):
         return
 
-    ns = {}
     try:
-        with open(THEME_FILE) as f:
-            exec(f.read(), {"__builtins__": {}}, ns)
+        import tomllib
+    except ModuleNotFoundError:
+        try:
+            import tomli as tomllib
+        except ModuleNotFoundError:
+            return
+
+    try:
+        with open(THEME_FILE, 'rb') as f:
+            ns = tomllib.load(f)
     except Exception:
         return
 
-    # Build override dict, converting hex-only values to internal tuple format
+    # Build override dict, converting TOML values to internal tuple format
     overrides = {}
 
-    # Model badges: ("bg_hex", "fg_hex") → (("bg_hex", 256), ("fg_hex", 256))
+    def _is_hex(v):
+        return isinstance(v, str) and v.startswith('#') and len(v) == 7
+
+    # Model badges: ["bg_hex", "fg_hex"] → (("bg_hex", 256), ("fg_hex", 256))
     for key in ("model_sonnet", "model_opus", "model_haiku", "model_default"):
         if key in ns:
-            bg_hex, fg_hex = ns[key]
+            val = ns[key]
+            if not isinstance(val, list) or len(val) != 2:
+                continue
+            bg_hex, fg_hex = val
+            if not _is_hex(bg_hex) or not _is_hex(fg_hex):
+                continue
             overrides[key] = ((bg_hex, hex_to_256(bg_hex)), (fg_hex, hex_to_256(fg_hex)))
 
     # Simple colors: "hex" → ("hex", 256)
     for key in ("bar_empty", "usage_light", "usage_green", "usage_yellow", "usage_red"):
         if key in ns:
             h = ns[key]
+            if not _is_hex(h):
+                continue
             overrides[key] = (h, hex_to_256(h))
 
     # Text colors: "hex" → (("hex", None), 256)
     for key in ("text_percent", "text_numbers", "text_cwd", "text_git", "text_na"):
         if key in ns:
             h = ns[key]
+            if not _is_hex(h):
+                continue
             overrides[key] = ((h, None), hex_to_256(h))
 
-    # Gradient: [(threshold, "hex"), ...] → [(threshold, ("hex", 256)), ...]
+    # Gradient: [{threshold, color}, ...] → [(threshold, ("hex", 256)), ...]
     if "gradient" in ns:
-        overrides["gradient"] = [
-            (threshold, (h, hex_to_256(h))) for threshold, h in ns["gradient"]
-        ]
+        raw = ns["gradient"]
+        if isinstance(raw, list) and all(
+            isinstance(item, dict)
+            and isinstance(item.get("threshold"), (int, float))
+            and _is_hex(item.get("color", ""))
+            for item in raw
+        ):
+            overrides["gradient"] = [
+                (item["threshold"], (item["color"], hex_to_256(item["color"])))
+                for item in raw
+            ]
 
     if not overrides:
         return

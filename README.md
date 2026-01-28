@@ -71,7 +71,7 @@ Alternatively, edit the defaults at the top of the script.
 |---|---|---|
 | `SL_THEME` | `dark` | Color theme: `dark` or `light` |
 | `SL_USAGE_CACHE_DURATION` | `300` | Usage API cache duration in seconds |
-| `SL_THEME_FILE` | `~/.claude/claude-code-theme.py` | Path to custom theme file (see below) |
+| `SL_THEME_FILE` | `~/.claude/claude-code-theme.toml` | Path to custom theme file (see below) |
 
 ### Segment Order & Options
 
@@ -142,18 +142,18 @@ The script gets context usage from the Claude Code API (`used_percentage`). It a
 
 ### Custom Themes
 
-Create `~/.claude/claude-code-theme.py` (or set `SL_THEME_FILE` to a custom path) to override any colors without modifying the script. Define only the colors you want to change — everything else inherits from the base theme (`dark` or `light`).
+Create `~/.claude/claude-code-theme.toml` (or set `SL_THEME_FILE` to a custom path) to override any colors without modifying the script. Define only the colors you want to change — everything else inherits from the base theme (`dark` or `light`).
 
-Use hex colors only. The 256-color terminal fallbacks are computed automatically.
+Requires Python 3.11+ (for `tomllib`). Use hex colors only. The 256-color terminal fallbacks are computed automatically.
 
-```python
-# ~/.claude/claude-code-theme.py
+```toml
+# ~/.claude/claude-code-theme.toml
 # Dracula-inspired custom theme
 
-# Model badges (bg, fg)
-model_sonnet = "#50FA7B", "#282A36"
-model_opus   = "#BD93F9", "#282A36"
-model_haiku  = "#6272A4", "#F8F8F2"
+# Model badges [bg, fg]
+model_sonnet = ["#50FA7B", "#282A36"]
+model_opus   = ["#BD93F9", "#282A36"]
+model_haiku  = ["#6272A4", "#F8F8F2"]
 
 # Progress bar empty fill
 bar_empty = "#44475A"
@@ -167,18 +167,18 @@ usage_green  = "#50FA7B"
 usage_yellow = "#F1FA8C"
 usage_red    = "#FF5555"
 
-# Progress bar gradient (threshold, hex)
+# Progress bar gradient
 gradient = [
-    (10,  "#1A3A1A"),
-    (20,  "#1F4F1A"),
-    (30,  "#256419"),
-    (40,  "#2E7918"),
-    (50,  "#3A8F17"),
-    (60,  "#6A8F00"),
-    (70,  "#8F7A00"),
-    (80,  "#B45A00"),
-    (90,  "#D43A00"),
-    (101, "#FF5555"),
+    {threshold = 10,  color = "#1A3A1A"},
+    {threshold = 20,  color = "#1F4F1A"},
+    {threshold = 30,  color = "#256419"},
+    {threshold = 40,  color = "#2E7918"},
+    {threshold = 50,  color = "#3A8F17"},
+    {threshold = 60,  color = "#6A8F00"},
+    {threshold = 70,  color = "#8F7A00"},
+    {threshold = 80,  color = "#B45A00"},
+    {threshold = 90,  color = "#D43A00"},
+    {threshold = 101, color = "#FF5555"},
 ]
 ```
 
@@ -186,10 +186,10 @@ gradient = [
 
 | Key | Format | Description |
 |---|---|---|
-| `model_sonnet` | `"#bg", "#fg"` | Sonnet model badge |
-| `model_opus` | `"#bg", "#fg"` | Opus model badge |
-| `model_haiku` | `"#bg", "#fg"` | Haiku model badge |
-| `model_default` | `"#bg", "#fg"` | Fallback model badge |
+| `model_sonnet` | `["#bg", "#fg"]` | Sonnet model badge |
+| `model_opus` | `["#bg", "#fg"]` | Opus model badge |
+| `model_haiku` | `["#bg", "#fg"]` | Haiku model badge |
+| `model_default` | `["#bg", "#fg"]` | Fallback model badge |
 | `bar_empty` | `"#hex"` | Empty portion of progress bar |
 | `text_percent` | `"#hex"` | Percentage text |
 | `text_numbers` | `"#hex"` | Token count text |
@@ -200,7 +200,7 @@ gradient = [
 | `usage_green` | `"#hex"` | Usage gauge: on track |
 | `usage_yellow` | `"#hex"` | Usage gauge: faster than sustainable |
 | `usage_red` | `"#hex"` | Usage gauge: will run out |
-| `gradient` | `[(threshold, "#hex"), ...]` | Progress bar color stops (10 entries, thresholds ending at 101) |
+| `gradient` | `[{threshold, color}, ...]` | Progress bar color stops (10 entries, thresholds ending at 101) |
 
 ## Demo Modes
 
