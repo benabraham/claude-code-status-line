@@ -123,6 +123,8 @@ def hex_to_rgb(hex_color):
     if hex_color is None:
         return None
     h = hex_color.lstrip("#")
+    if len(h) != 6:
+        return None
     return tuple(int(h[i : i + 2], 16) for i in (0, 2, 4))
 
 
@@ -132,7 +134,10 @@ _CUBE_VALS = (0, 95, 135, 175, 215, 255)
 
 def hex_to_256(hex_color):
     """Convert '#RRGGBB' hex to nearest xterm-256 color index."""
-    r, g, b = hex_to_rgb(hex_color)
+    rgb = hex_to_rgb(hex_color)
+    if rgb is None:
+        return 0
+    r, g, b = rgb
 
     # Nearest in 6x6x6 cube (indices 16-231)
     ri = min(range(6), key=lambda i: abs(r - _CUBE_VALS[i]))
