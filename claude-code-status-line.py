@@ -560,9 +560,11 @@ def fetch_usage_data():
     except (IOError, json.JSONDecodeError):
         pass
 
-    # Get OAuth token
+    # Get OAuth token and validate it contains only safe characters
     token = get_oauth_token()
     if not token:
+        return None
+    if not all(c.isalnum() or c in '-._~+/=' for c in token):
         return None
 
     # Fetch from API using curl
