@@ -576,25 +576,21 @@ def fetch_usage_data():
     if not all(c.isalnum() or c in '-._~+/=' for c in token):
         return None
 
-    # Fetch from API using curl
+    # Fetch from API using curl (token passed via --config stdin to hide from ps)
     try:
         result = subprocess.run(
             [
                 "curl",
                 "-s",
                 "-f",
-                "-H",
-                "Accept: application/json",
-                "-H",
-                "Content-Type: application/json",
-                "-H",
-                "User-Agent: claude-code/2.0.32",
-                "-H",
-                "anthropic-beta: oauth-2025-04-20",
-                "-H",
-                f"Authorization: Bearer {token}",
+                "--config", "-",
+                "-H", "Accept: application/json",
+                "-H", "Content-Type: application/json",
+                "-H", "User-Agent: claude-code/2.0.32",
+                "-H", "anthropic-beta: oauth-2025-04-20",
                 "https://api.anthropic.com/api/oauth/usage",
             ],
+            input=f'header = "Authorization: Bearer {token}"\n',
             capture_output=True,
             text=True,
             timeout=5,
