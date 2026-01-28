@@ -948,33 +948,28 @@ def build_progress_bar(
     pct_comparison = ""
     tokens_opts = _segment_opts('tokens')
     pct_opts = _segment_opts('percentage')
-    comparisons = []
-    show_comparison = False
+    has_token_diff = False
+    has_pct_diff = False
+
     if tokens_opts.get('fallback') == '1' and transcript_tokens is not None and total_tokens is not None and total_tokens > 0:
         diff_pct = abs(transcript_tokens - total_tokens) / total_tokens * 100
         if diff_pct > 10:
-            comparisons.append(f"{transcript_tokens // 1000}k")
-            show_comparison = True
+            has_token_diff = True
+
     if pct_opts.get('fallback') == '1' and calc_pct is not None and pct > 0:
         diff_pct = abs(calc_pct - pct) / pct * 100
         if diff_pct > 10:
-            comparisons.append(f"{calc_pct}\u00a0%")
-            show_comparison = True
-    if show_comparison and comparisons:
+            has_pct_diff = True
+
+    if has_token_diff or has_pct_diff:
         theme = THEMES[THEME]
         red_rgb, red_fb = theme["usage_red"]
         red_color = _color(red_rgb, red_fb, is_bg=False)
-        combined = f"{red_color}\u00a0{{{'\u00a0'.join(comparisons)}}}"
-        # Split comparison parts: token comparison goes with tokens, pct with percentage
-        if len(comparisons) == 2:
-            token_comparison = f"{red_color}\u00a0{{{comparisons[0]}}}"
-            pct_comparison = f"{red_color}\u00a0{{{comparisons[1]}}}"
-        elif tokens_opts.get('fallback') == '1' and transcript_tokens is not None and total_tokens is not None and total_tokens > 0:
-            diff_pct = abs(transcript_tokens - total_tokens) / total_tokens * 100
-            if diff_pct > 10:
-                token_comparison = combined
-        else:
-            pct_comparison = combined
+
+        if has_token_diff:
+            token_comparison = f"{red_color}\u00a0{{{transcript_tokens // 1000}k}}"
+        if has_pct_diff:
+            pct_comparison = f"{red_color}\u00a0{{{calc_pct}\u00a0%}}"
 
     # Token display (may be None if only API percentage available)
     numbers_color = text_color("numbers")
