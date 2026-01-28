@@ -414,7 +414,7 @@ def get_git_branch(cwd):
             ["git", "-C", cwd, "branch", "--show-current"],
             capture_output=True,
             text=True,
-            timeout=1,
+            timeout=0.3,
         )
         if result.returncode == 0:
             return result.stdout.strip() or None
