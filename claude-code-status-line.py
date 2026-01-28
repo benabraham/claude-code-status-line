@@ -802,7 +802,7 @@ def format_usage_indicators(usage_data):
         # Forward-looking ratio: remaining_budget / remaining_time
         remaining_budget_pct = max(0, 100 - utilization_pct)
         remaining_time_pct = max(0, 100 - time_elapsed_pct)
-        if remaining_time_pct > 0:
+        if remaining_time_pct > 0.1:
             ratio = remaining_budget_pct / remaining_time_pct
         elif remaining_budget_pct > 0:
             ratio = 2.0  # Window ending with budget left
