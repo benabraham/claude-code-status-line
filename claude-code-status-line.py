@@ -24,6 +24,7 @@ Latest version: https://github.com/benabraham/claude-code-status-line
 """
 
 import json
+import math
 import os
 import subprocess
 import sys
@@ -1245,6 +1246,146 @@ def show_scale_demo(mode="animate"):
         sys.exit(1)
 
 
+def show_gauge_sweep_demo():
+    """Animated demo: both gauge types sweeping through full ratio range."""
+    CL = "\033[K"
+
+    # Sweep: 2.0 → 0.0 → 2.0 (continuous loop)
+    n = 100
+    steps = []
+    for i in range(n, -1, -1):
+        steps.append(i * 2.0 / n)
+    for i in range(1, n):
+        steps.append(i * 2.0 / n)
+
+    num_lines = 3  # blank, content, blank
+
+    for _ in range(num_lines):
+        print()
+
+    try:
+        while True:
+            for ratio in steps:
+                if ratio >= 1 / 0.75:
+                    zone = "light"
+                elif ratio >= 1.0:
+                    zone = "green"
+                elif ratio >= 0.75:
+                    zone = "yellow"
+                else:
+                    zone = "red"
+
+                vertical = get_usage_gauge(ratio)
+                blocks = get_usage_gauge_blocks(ratio, gauge_width=8)
+
+                sys.stdout.write(f"\033[{num_lines}A")
+                sys.stdout.write(f"{CL}\n")
+                label = f"ratio: {ratio:.2f}  ({zone})"
+                sys.stdout.write(
+                    f"  {vertical}{RESET}    "
+                    f"{label:<24s}    "
+                    f"{blocks}{RESET}{CL}\n"
+                )
+                sys.stdout.write(f"{CL}\n")
+                sys.stdout.flush()
+                time.sleep(0.03)
+    except KeyboardInterrupt:
+        print()
+
+
+def show_usage_principle_demo():
+    """Animated demo: same usage % at different time positions in 5h window."""
+    CL = "\033[K"
+    PAD = " " * 10
+    NBSP = "\u00a0"
+
+    window_min = 300  # 5 hours
+    start_t = 10
+    end_t = 290
+    window_start_h = 10  # window is 10:00 – 15:00
+    reset_label = "15:00"
+
+    # Precompute monotonic usage curve with breaks and varying rate
+    base_rate = 100 / window_min
+    osc_P = 100
+    breaks = [(75, 95), (185, 210)]  # "not using" periods
+    osc_curve = []  # (usage, rate) per minute
+    usage = 0.0
+    for step_t in range(window_min + 1):
+        in_break = any(s <= step_t < e for s, e in breaks)
+        if in_break:
+            rate = 0.0
+        else:
+            rate = base_rate * (1 + 0.8 * math.sin(2 * math.pi * step_t / osc_P))
+        osc_curve.append((min(100, usage), rate))
+        usage += rate
+
+    # header + 3 x (blank + label + gauges) = 10 lines
+    num_lines = 10
+
+    for _ in range(num_lines):
+        print()
+
+    def gauge_line(ratio, remaining_pct, reset_label):
+        color = get_usage_color(ratio)
+        v = get_usage_gauge(ratio)
+        b = get_usage_gauge_blocks(ratio, gauge_width=8)
+        pct_str = str(remaining_pct).rjust(3).replace(' ', NBSP)
+        return (
+            f"{PAD}{v}{RESET}  {b}{RESET}"
+            f" {color}{pct_str}{NBSP}%{NBSP}\u2192{NBSP}{reset_label}{RESET}"
+        )
+
+    try:
+        while True:
+            for t in range(start_t, end_t + 1, 2):
+                clock_h, clock_m = divmod(window_start_h * 60 + t, 60)
+                rh, rm = divmod(window_min - t, 60)
+                remaining_time_pct = (window_min - t) / window_min * 100
+
+                sys.stdout.write(f"\033[{num_lines}A")
+
+                # Shared header
+                sys.stdout.write(
+                    f"5-hour window  10:00\u201315:00   "
+                    f"now {clock_h}:{clock_m:02d}  ({rh}:{rm:02d} left){CL}\n"
+                )
+
+                # Fixed 10% usage
+                ratio_10 = 90 / remaining_time_pct if remaining_time_pct > 0.1 else 2.0
+                sys.stdout.write(f"{CL}\n")
+                sys.stdout.write(f"10% usage{CL}\n")
+                sys.stdout.write(f"{gauge_line(ratio_10, 90, reset_label)}{CL}\n")
+
+                # Fixed 90% usage
+                ratio_90 = 10 / remaining_time_pct if remaining_time_pct > 0.1 else 2.0
+                sys.stdout.write(f"{CL}\n")
+                sys.stdout.write(f"90% usage{CL}\n")
+                sys.stdout.write(f"{gauge_line(ratio_90, 10, reset_label)}{CL}\n")
+
+                # Monotonically rising usage with varying rate and breaks
+                osc_usage, osc_rate = osc_curve[t]
+                osc_remaining_pct = round(100 - osc_usage)
+                if remaining_time_pct > 0.1:
+                    osc_ratio = osc_remaining_pct / remaining_time_pct
+                else:
+                    osc_ratio = 2.0 if osc_remaining_pct > 0 else 1.0
+                if osc_rate == 0:
+                    intensity = "not using"
+                elif osc_rate > base_rate:
+                    intensity = "more intensive usage now"
+                else:
+                    intensity = "less intensive usage now"
+                sys.stdout.write(f"{CL}\n")
+                sys.stdout.write(f"{round(osc_usage):2d}% usage — {intensity}{CL}\n")
+                sys.stdout.write(f"{gauge_line(osc_ratio, osc_remaining_pct, reset_label)}{CL}\n")
+
+                sys.stdout.flush()
+                time.sleep(0.1)
+    except KeyboardInterrupt:
+        print()
+
+
 # =============================================================================
 # MAIN
 # =============================================================================
@@ -1269,6 +1410,12 @@ def main():
             return
         if sys.argv[1] == "--test-usage":
             show_usage_demo()
+            return
+        if sys.argv[1] == "--test-gauge":
+            show_gauge_sweep_demo()
+            return
+        if sys.argv[1] == "--test-principle":
+            show_usage_principle_demo()
             return
 
     # Read and parse JSON input

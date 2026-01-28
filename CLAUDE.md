@@ -20,6 +20,12 @@ There is no build step, test suite, or linter. The script is a standalone execut
 # Demo: usage indicator scenarios
 ./claude-code-status-line.py --test-usage
 
+# Demo: gauge sweep (both vertical and blocks, ratio 2.0 → 0.0 → 2.0)
+./claude-code-status-line.py --test-gauge
+
+# Demo: usage principle (10%, 90%, and varying usage in 5-hour window)
+./claude-code-status-line.py --test-principle
+
 # Normal operation: receives JSON on stdin from Claude Code
 echo '{"model":"claude-sonnet-4-20250514","cwd":"/tmp","contextWindow":{"used_percentage":42}}' | ./claude-code-status-line.py
 ```

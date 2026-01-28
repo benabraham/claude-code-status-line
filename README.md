@@ -222,6 +222,17 @@ Preview usage indicator scenarios:
 ./claude-code-status-line.py --test-usage
 ```
 
+Animated gauge demos:
+
+```bash
+# Sweep both gauge types through full ratio range (2.0 → 0.0 → 2.0)
+./claude-code-status-line.py --test-gauge
+
+# Usage principle: same % at different time positions in a 5-hour window
+# Shows 10% fixed, 90% fixed, and monotonically rising usage with varying rate
+./claude-code-status-line.py --test-principle
+```
+
 ## How It Works
 
 The script receives JSON on stdin from Claude Code with context window and model information. It renders a single-line status bar:
