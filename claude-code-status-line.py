@@ -452,13 +452,16 @@ def get_git_branch(cwd):
     """Get current git branch, or None"""
     try:
         result = subprocess.run(
-            ["git", "-C", cwd, "branch", "--show-current"],
+            ["git", "-C", cwd, "-c", "color.branch=never", "branch", "--show-current"],
             capture_output=True,
             text=True,
             timeout=0.3,
         )
         if result.returncode == 0:
-            return result.stdout.strip() or None
+            branch = result.stdout.strip()
+            if branch:
+                return branch
+            return None
     except Exception:
         pass
     return None
