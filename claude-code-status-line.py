@@ -29,7 +29,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 # =============================================================================
 # CONFIGURATION — override any setting via environment variables (SL_ prefix)
@@ -783,11 +783,13 @@ def format_usage_indicators(usage_data):
         # Parse reset time
         try:
             reset_dt = datetime.fromisoformat(resets_at.replace("Z", "+00:00"))
+            if reset_dt.tzinfo is None:
+                reset_dt = reset_dt.replace(tzinfo=timezone.utc)
         except ValueError:
             results[segment_name] = ''
             continue
 
-        now = datetime.now(reset_dt.tzinfo)
+        now = datetime.now(timezone.utc)
         remaining_pct = max(0, int(100 - utilization_pct))
         reset_label = reset_dt.astimezone().strftime(time_fmt)
 
