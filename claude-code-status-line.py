@@ -54,6 +54,8 @@ def _env_int(key, default):
 
 THEME = _env_str("THEME", "dark")
 USAGE_CACHE_DURATION = _env_int("USAGE_CACHE_DURATION", 300)
+UPDATE_CACHE_DURATION = _env_int("UPDATE_CACHE_DURATION", 3600)  # 1 hour on success
+UPDATE_RETRY_DURATION = _env_int("UPDATE_RETRY_DURATION", 600)  # 10 min retry on failure
 THEME_FILE = _env_str(
     "THEME_FILE", os.path.expanduser("~/.claude/claude-code-theme.toml")
 )
@@ -61,7 +63,7 @@ THEME_FILE = _env_str(
 # --- Segment system ---
 
 DEFAULT_SEGMENTS = (
-    "model progress_bar percentage tokens directory git_branch usage_5hour usage_weekly"
+    "update model progress_bar percentage tokens directory git_branch usage_5hour usage_weekly"
 )
 VALID_SEGMENTS = frozenset(DEFAULT_SEGMENTS.split())
 
@@ -533,6 +535,7 @@ def get_tokens_from_transcript(transcript_path):
 # =============================================================================
 
 USAGE_CACHE_PATH = os.path.expanduser("~/.claude/.usage_cache.json")
+UPDATE_CACHE_PATH = os.path.expanduser("~/.claude/.update_cache.json")
 CREDENTIALS_PATH = os.path.expanduser("~/.claude/.credentials.json")
 
 
@@ -634,6 +637,116 @@ def fetch_usage_data():
         return data
     except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError):
         return None
+
+
+# =============================================================================
+# UPDATE CHECKER
+# =============================================================================
+
+
+def get_installed_version():
+    """Get installed Claude Code version."""
+    try:
+        result = subprocess.run(
+            ["claude", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        if result.returncode == 0:
+            # Format: "2.1.22 (Claude Code)"
+            return result.stdout.strip().split()[0]
+    except (subprocess.TimeoutExpired, FileNotFoundError, IndexError):
+        pass
+    return None
+
+
+def parse_semver(version):
+    """Parse semver string to tuple for comparison."""
+    try:
+        parts = version.split(".")
+        return tuple(int(p) for p in parts[:3])
+    except (ValueError, AttributeError):
+        return (0, 0, 0)
+
+
+def fetch_latest_version():
+    """Fetch latest Claude Code version from npm, with caching."""
+    cached_version = None
+
+    # Check cache first
+    try:
+        if os.path.exists(UPDATE_CACHE_PATH):
+            with open(UPDATE_CACHE_PATH, "r") as f:
+                cache = json.load(f)
+            age = time.time() - cache.get("timestamp", 0)
+            cached_version = cache.get("version")
+            # Success cache: use UPDATE_CACHE_DURATION (1h default)
+            # Failure cache: use UPDATE_RETRY_DURATION (10min default)
+            if cached_version:
+                if age < UPDATE_CACHE_DURATION:
+                    return cached_version
+            else:
+                if age < UPDATE_RETRY_DURATION:
+                    return None  # Still in failure cooldown
+    except (IOError, json.JSONDecodeError):
+        pass
+
+    # Fetch from npm registry
+    version = None
+    try:
+        result = subprocess.run(
+            [
+                "curl",
+                "-s",
+                "-f",
+                "https://registry.npmjs.org/@anthropic-ai/claude-code/latest",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            data = json.loads(result.stdout)
+            version = data.get("version")
+    except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError):
+        pass
+
+    # If fetch failed but we have a cached version, return it (stale is better than nothing)
+    if version is None and cached_version:
+        return cached_version
+
+    # Cache result (success or failure) atomically
+    tmp_path = None
+    try:
+        cache_dir = os.path.dirname(UPDATE_CACHE_PATH)
+        fd, tmp_path = tempfile.mkstemp(dir=cache_dir)
+        with os.fdopen(fd, "w") as f:
+            json.dump({"timestamp": time.time(), "version": version}, f)
+        os.replace(tmp_path, UPDATE_CACHE_PATH)
+    except (IOError, OSError):
+        if tmp_path:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
+    return version
+
+
+def check_for_update():
+    """Check if update available. Returns (installed, latest) or None."""
+    installed = get_installed_version()
+    if not installed:
+        return None
+
+    latest = fetch_latest_version()
+    if not latest:
+        return None
+
+    if parse_semver(latest) > parse_semver(installed):
+        return (installed, latest)
+    return None
 
 
 def get_usage_color(ratio):
@@ -925,6 +1038,17 @@ def _render_usage_weekly(ctx, opts):
     return ctx.get("usage_weekly", "")
 
 
+def _render_update(ctx, opts):
+    update_info = ctx.get("update_info")
+    if not update_info:
+        return ""
+    installed, latest = update_info
+    theme = THEMES[THEME]
+    yellow_rgb, yellow_fb = theme["usage_yellow"]
+    color = _color(yellow_rgb, yellow_fb, is_bg=False)
+    return f"   {BOLD}{color}{latest} available! "
+
+
 SEGMENT_RENDERERS = {
     "model": _render_model,
     "progress_bar": _render_progress_bar,
@@ -934,6 +1058,7 @@ SEGMENT_RENDERERS = {
     "git_branch": _render_git_branch,
     "usage_5hour": _render_usage_5hour,
     "usage_weekly": _render_usage_weekly,
+    "update": _render_update,
 }
 
 
@@ -952,6 +1077,7 @@ def build_progress_bar(
     calc_pct=None,
     usage_5hour="",
     usage_weekly="",
+    update_info=None,
 ):
     """Build the full status line string"""
     bar_width = max(1, min(128, int(_segment_opts("progress_bar").get("width", "12"))))
@@ -1039,6 +1165,7 @@ def build_progress_bar(
         "cwd": cwd,
         "usage_5hour": usage_5hour,
         "usage_weekly": usage_weekly,
+        "update_info": update_info,
     }
 
     parts = []
@@ -1561,6 +1688,9 @@ def main():
     usage_data = fetch_usage_data()
     usage_parts = format_usage_indicators(usage_data)
 
+    # Check for updates
+    update_info = check_for_update()
+
     print(
         build_progress_bar(
             pct,
@@ -1572,6 +1702,7 @@ def main():
             calc_pct,
             usage_5hour=usage_parts["usage_5hour"],
             usage_weekly=usage_parts["usage_weekly"],
+            update_info=update_info,
         )
     )
 
