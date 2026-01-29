@@ -35,6 +35,8 @@ import time
 import tty
 from datetime import datetime, timezone
 
+VERSION = "3.1.0"
+
 # =============================================================================
 # CONFIGURATION — override any setting via environment variables (SL_ prefix)
 # Example: SL_THEME=light SL_SEGMENTS='model percentage directory' ~/.claude/claude-code-status-line.py
@@ -56,6 +58,7 @@ THEME = _env_str("THEME", "dark")
 USAGE_CACHE_DURATION = _env_int("USAGE_CACHE_DURATION", 300)
 UPDATE_CACHE_DURATION = _env_int("UPDATE_CACHE_DURATION", 3600)  # 1 hour on success
 UPDATE_RETRY_DURATION = _env_int("UPDATE_RETRY_DURATION", 600)  # 10 min retry on failure
+STATUSLINE_CACHE_DURATION = _env_int("STATUSLINE_CACHE_DURATION", 86400)  # 24 hours
 THEME_FILE = _env_str(
     "THEME_FILE", os.path.expanduser("~/.claude/claude-code-theme.toml")
 )
@@ -63,7 +66,7 @@ THEME_FILE = _env_str(
 # --- Segment system ---
 
 DEFAULT_SEGMENTS = (
-    "update model progress_bar percentage tokens directory git_branch usage_5hour usage_weekly"
+    "update model progress_bar percentage tokens directory git_branch usage_5hour usage_weekly statusline_update"
 )
 VALID_SEGMENTS = frozenset(DEFAULT_SEGMENTS.split())
 
@@ -536,6 +539,7 @@ def get_tokens_from_transcript(transcript_path):
 
 USAGE_CACHE_PATH = os.path.expanduser("~/.claude/.usage_cache.json")
 UPDATE_CACHE_PATH = os.path.expanduser("~/.claude/.update_cache.json")
+STATUSLINE_CACHE_PATH = os.path.expanduser("~/.claude/.statusline_cache.json")
 CREDENTIALS_PATH = os.path.expanduser("~/.claude/.credentials.json")
 
 
@@ -746,6 +750,76 @@ def check_for_update():
 
     if parse_semver(latest) > parse_semver(installed):
         return (installed, latest)
+    return None
+
+
+def fetch_latest_statusline_version():
+    """Fetch latest status line version from GitHub, with caching."""
+    cached_version = None
+
+    try:
+        if os.path.exists(STATUSLINE_CACHE_PATH):
+            with open(STATUSLINE_CACHE_PATH, "r") as f:
+                cache = json.load(f)
+            age = time.time() - cache.get("timestamp", 0)
+            cached_version = cache.get("version")
+            if cached_version:
+                if age < STATUSLINE_CACHE_DURATION:
+                    return cached_version
+            else:
+                if age < UPDATE_RETRY_DURATION:
+                    return None
+    except (IOError, json.JSONDecodeError):
+        pass
+
+    version = None
+    try:
+        result = subprocess.run(
+            [
+                "curl",
+                "-s",
+                "-f",
+                "https://api.github.com/repos/benabraham/claude-code-status-line/releases/latest",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            data = json.loads(result.stdout)
+            tag = data.get("tag_name", "")
+            version = tag.lstrip("v") if tag else None
+    except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError):
+        pass
+
+    if version is None and cached_version:
+        return cached_version
+
+    tmp_path = None
+    try:
+        cache_dir = os.path.dirname(STATUSLINE_CACHE_PATH)
+        fd, tmp_path = tempfile.mkstemp(dir=cache_dir)
+        with os.fdopen(fd, "w") as f:
+            json.dump({"timestamp": time.time(), "version": version}, f)
+        os.replace(tmp_path, STATUSLINE_CACHE_PATH)
+    except (IOError, OSError):
+        if tmp_path:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
+    return version
+
+
+def check_for_statusline_update():
+    """Check if statusline update available. Returns True or None."""
+    latest = fetch_latest_statusline_version()
+    if not latest:
+        return None
+
+    if parse_semver(latest) > parse_semver(VERSION):
+        return True
     return None
 
 
@@ -1049,6 +1123,15 @@ def _render_update(ctx, opts):
     return f"   {BOLD}{color}{latest} available! "
 
 
+def _render_statusline_update(ctx, opts):
+    if not ctx.get("statusline_update"):
+        return ""
+    theme = THEMES[THEME]
+    yellow_rgb, yellow_fb = theme["usage_yellow"]
+    color = _color(yellow_rgb, yellow_fb, is_bg=False)
+    return f"   {BOLD}{color}this\u00a0status\u00a0line\u00a0has\u00a0a\u00a0newer\u00a0version"
+
+
 SEGMENT_RENDERERS = {
     "model": _render_model,
     "progress_bar": _render_progress_bar,
@@ -1059,6 +1142,7 @@ SEGMENT_RENDERERS = {
     "usage_5hour": _render_usage_5hour,
     "usage_weekly": _render_usage_weekly,
     "update": _render_update,
+    "statusline_update": _render_statusline_update,
 }
 
 
@@ -1078,6 +1162,7 @@ def build_progress_bar(
     usage_5hour="",
     usage_weekly="",
     update_info=None,
+    statusline_update=None,
 ):
     """Build the full status line string"""
     bar_width = max(1, min(128, int(_segment_opts("progress_bar").get("width", "12"))))
@@ -1166,6 +1251,7 @@ def build_progress_bar(
         "usage_5hour": usage_5hour,
         "usage_weekly": usage_weekly,
         "update_info": update_info,
+        "statusline_update": statusline_update,
     }
 
     parts = []
@@ -1690,6 +1776,7 @@ def main():
 
     # Check for updates
     update_info = check_for_update()
+    statusline_update = check_for_statusline_update()
 
     print(
         build_progress_bar(
@@ -1703,6 +1790,7 @@ def main():
             usage_5hour=usage_parts["usage_5hour"],
             usage_weekly=usage_parts["usage_weekly"],
             update_info=update_info,
+            statusline_update=statusline_update,
         )
     )
 
