@@ -50,6 +50,16 @@ chmod +x ~/.claude/claude-code-status-line.py
 
 3. Restart Claude Code. After initial setup, edits to the script take effect immediately.
 
+## Updating
+
+The script checks for updates and shows a notification on a separate line below the status bar when a new version is available. To update:
+
+```bash
+~/.claude/claude-code-status-line.py --self-update
+```
+
+Or manually re-run the curl command from the installation step.
+
 ## Configuration
 
 All settings can be configured via environment variables with the `SL_` prefix, without modifying the script. Set them in the `command` field:
@@ -73,6 +83,7 @@ Alternatively, edit the defaults at the top of the script.
 | `SL_USAGE_CACHE_DURATION` | `300` | Usage API cache duration in seconds |
 | `SL_UPDATE_CACHE_DURATION` | `3600` | Update check cache duration in seconds (1 hour) |
 | `SL_UPDATE_RETRY_DURATION` | `600` | Update check retry interval on failure (10 min) |
+| `SL_SHOW_STATUSLINE_UPDATE` | `1` | Show status line update notifications (`0` to disable) |
 | `SL_THEME_FILE` | `~/.claude/claude-code-theme.toml` | Path to custom theme file (see below) |
 
 ### Segment Order & Options

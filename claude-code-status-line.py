@@ -35,7 +35,7 @@ import time
 import tty
 from datetime import datetime, timezone
 
-VERSION = "3.2.0"
+VERSION = "3.3.0"
 
 # =============================================================================
 # CONFIGURATION — override any setting via environment variables (SL_ prefix)
@@ -59,6 +59,7 @@ USAGE_CACHE_DURATION = _env_int("USAGE_CACHE_DURATION", 300)
 UPDATE_CACHE_DURATION = _env_int("UPDATE_CACHE_DURATION", 3600)  # 1 hour on success
 UPDATE_RETRY_DURATION = _env_int("UPDATE_RETRY_DURATION", 600)  # 10 min retry on failure
 STATUSLINE_CACHE_DURATION = _env_int("STATUSLINE_CACHE_DURATION", 86400)  # 24 hours
+SHOW_STATUSLINE_UPDATE = _env_str("SHOW_STATUSLINE_UPDATE", "1") == "1"
 THEME_FILE = _env_str(
     "THEME_FILE", os.path.expanduser("~/.claude/claude-code-theme.toml")
 )
@@ -66,7 +67,7 @@ THEME_FILE = _env_str(
 # --- Segment system ---
 
 DEFAULT_SEGMENTS = (
-    "update model progress_bar percentage tokens directory git_branch usage_5hour usage_weekly statusline_update"
+    "update model progress_bar percentage tokens directory git_branch usage_5hour usage_weekly"
 )
 VALID_SEGMENTS = frozenset(DEFAULT_SEGMENTS.split())
 
@@ -813,14 +814,84 @@ def fetch_latest_statusline_version():
 
 
 def check_for_statusline_update():
-    """Check if statusline update available. Returns True or None."""
+    """Check if statusline update available. Returns latest version or None."""
     latest = fetch_latest_statusline_version()
     if not latest:
         return None
 
     if parse_semver(latest) > parse_semver(VERSION):
-        return True
+        return latest
     return None
+
+
+def get_script_path():
+    """Get the absolute path to this script."""
+    return os.path.abspath(__file__)
+
+
+def perform_self_update():
+    """Download and install the latest version of the status line script."""
+    print(f"Current version: {VERSION}")
+    print("Checking for updates...")
+
+    latest = fetch_latest_statusline_version()
+    if not latest:
+        print("Error: Could not fetch latest version info")
+        return 1
+
+    if parse_semver(latest) <= parse_semver(VERSION):
+        print(f"Already up to date (v{VERSION})")
+        return 0
+
+    print(f"New version available: {latest}")
+    print("Downloading...")
+
+    # Fetch the script from GitHub
+    url = "https://raw.githubusercontent.com/benabraham/claude-code-status-line/main/claude-code-status-line.py"
+    try:
+        result = subprocess.run(
+            ["curl", "-s", "-f", url],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode != 0:
+            print("Error: Failed to download update")
+            return 1
+        new_content = result.stdout
+    except (subprocess.TimeoutExpired, FileNotFoundError) as e:
+        print(f"Error: {e}")
+        return 1
+
+    # Verify download contains VERSION (basic sanity check)
+    if f'VERSION = "{latest}"' not in new_content and "VERSION = " not in new_content:
+        print("Error: Downloaded file doesn't look like a valid status line script")
+        return 1
+
+    # Get path to this script
+    script_path = get_script_path()
+    print(f"Updating: {script_path}")
+
+    # Write atomically using temp file
+    tmp_path = None
+    try:
+        script_dir = os.path.dirname(script_path)
+        fd, tmp_path = tempfile.mkstemp(dir=script_dir, suffix=".py")
+        with os.fdopen(fd, "w") as f:
+            f.write(new_content)
+        # Preserve executable permission
+        os.chmod(tmp_path, os.stat(script_path).st_mode)
+        os.replace(tmp_path, script_path)
+        print(f"Updated to v{latest}")
+        return 0
+    except (IOError, OSError) as e:
+        print(f"Error writing update: {e}")
+        if tmp_path:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+        return 1
 
 
 def get_usage_color(ratio):
@@ -1123,15 +1194,6 @@ def _render_update(ctx, opts):
     return f"   {BOLD}{color}{latest} available! "
 
 
-def _render_statusline_update(ctx, opts):
-    if not ctx.get("statusline_update"):
-        return ""
-    theme = THEMES[THEME]
-    yellow_rgb, yellow_fb = theme["usage_yellow"]
-    color = _color(yellow_rgb, yellow_fb, is_bg=False)
-    return f"   {BOLD}{color}this\u00a0status\u00a0line\u00a0has\u00a0a\u00a0newer\u00a0version"
-
-
 SEGMENT_RENDERERS = {
     "model": _render_model,
     "progress_bar": _render_progress_bar,
@@ -1142,7 +1204,6 @@ SEGMENT_RENDERERS = {
     "usage_5hour": _render_usage_5hour,
     "usage_weekly": _render_usage_weekly,
     "update": _render_update,
-    "statusline_update": _render_statusline_update,
 }
 
 
@@ -1162,7 +1223,6 @@ def build_progress_bar(
     usage_5hour="",
     usage_weekly="",
     update_info=None,
-    statusline_update=None,
 ):
     """Build the full status line string"""
     bar_width = max(1, min(128, int(_segment_opts("progress_bar").get("width", "12"))))
@@ -1251,7 +1311,6 @@ def build_progress_bar(
         "usage_5hour": usage_5hour,
         "usage_weekly": usage_weekly,
         "update_info": update_info,
-        "statusline_update": statusline_update,
     }
 
     parts = []
@@ -1709,8 +1768,13 @@ def main():
         )
         return
 
-    # Handle demo modes
+    # Handle command-line options
     if len(sys.argv) > 1:
+        if sys.argv[1] == "--self-update":
+            sys.exit(perform_self_update())
+        if sys.argv[1] == "--version":
+            print(VERSION)
+            return
         if sys.argv[1] == "--demo-scale":
             show_scale_demo(sys.argv[2] if len(sys.argv) > 2 else "animate")
             return
@@ -1776,7 +1840,6 @@ def main():
 
     # Check for updates
     update_info = check_for_update()
-    statusline_update = check_for_statusline_update()
 
     print(
         build_progress_bar(
@@ -1790,9 +1853,21 @@ def main():
             usage_5hour=usage_parts["usage_5hour"],
             usage_weekly=usage_parts["usage_weekly"],
             update_info=update_info,
-            statusline_update=statusline_update,
         )
     )
+
+    # Check for status line updates (separate line below)
+    if SHOW_STATUSLINE_UPDATE:
+        statusline_update = check_for_statusline_update()
+        if statusline_update:
+            theme = THEMES[THEME]
+            yellow_rgb, yellow_fb = theme["usage_yellow"]
+            color = _color(yellow_rgb, yellow_fb, is_bg=False)
+            script_path = get_script_path()
+            print(
+                f"{color}↳ Status line v{statusline_update} available. "
+                f"Update: {script_path} --self-update{RESET}"
+            )
 
 
 if __name__ == "__main__":
