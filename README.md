@@ -18,11 +18,12 @@ A statusline script for [Claude Code](https://docs.anthropic.com/en/docs/claude-
 
 ## Features
 
+- **Update checker** - notifies when a new Claude Code version is available
 - **Model badge** (Opus/Sonnet/Haiku)
 - **Context window progress bar and token count with percentage**
 - **Working directory**
 - **Git branch** (hiding main/master as an option)
-- **Usage** tracking both 5-hour and 7-day window showing what needs to be known (how much, to when and how much you’re burning through them)
+- **Usage** tracking both 5-hour and 7-day window showing what needs to be known (how much, to when and how much you're burning through them)
 - **Dark and light theme** support (Nord-inspired palette) with option to customize.
 - **Truecolor (24-bit)** with automatic 256-color fallback
 - **Customization of what is shown and how**
@@ -70,6 +71,8 @@ Alternatively, edit the defaults at the top of the script.
 |---|---|---|
 | `SL_THEME` | `dark` | Color theme: `dark` or `light` |
 | `SL_USAGE_CACHE_DURATION` | `300` | Usage API cache duration in seconds |
+| `SL_UPDATE_CACHE_DURATION` | `3600` | Update check cache duration in seconds (1 hour) |
+| `SL_UPDATE_RETRY_DURATION` | `600` | Update check retry interval on failure (10 min) |
 | `SL_THEME_FILE` | `~/.claude/claude-code-theme.toml` | Path to custom theme file (see below) |
 
 ### Segment Order & Options
@@ -82,10 +85,11 @@ SL_SEGMENTS="model progress_bar:width=20 percentage tokens directory git_branch 
 
 Each token is `segment_name` optionally followed by `:key=value` pairs. Unknown segment names are silently ignored.
 
-**Default:** `model progress_bar percentage tokens directory git_branch usage_5hour usage_weekly`
+**Default:** `update model progress_bar percentage tokens directory git_branch usage_5hour usage_weekly`
 
 | Segment | Description |
 |---|---|
+| `update` | Shows when a new Claude Code version is available |
 | `model` | Model badge (Opus/Sonnet/Haiku) |
 | `progress_bar` | Context window progress bar |
 | `percentage` | Context usage percentage |

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Single-file Python statusline script for Claude Code CLI. Displays context window usage, model info, budget tracking, and git status as a colored single-line bar. Stdlib only (json, os, subprocess, sys, tempfile, time, datetime). Custom themes require `tomllib` (Python 3.11+ stdlib) or optional `tomli` package.
+Single-file Python statusline script for Claude Code CLI. Displays context window usage, model info, budget tracking, git status, and update notifications as a colored single-line bar. Stdlib only (json, os, subprocess, sys, tempfile, time, datetime). Custom themes require `tomllib` (Python 3.11+ stdlib) or optional `tomli` package.
 
 ## Running and Testing
 
@@ -34,24 +34,26 @@ echo '{"model":"claude-sonnet-4-20250514","cwd":"/tmp","contextWindow":{"used_pe
 
 The script is a single pipeline: **JSON stdin → parse → compute → render ANSI line → stdout**.
 
-Key sections in `claude-code-status-line.py` (~1,340 lines):
+Key sections in `claude-code-status-line.py` (~1,710 lines):
 
-- **Lines 34-115**: Configuration — `SL_THEME`/`SL_USAGE_CACHE_DURATION`/`SL_THEME_FILE` globals, then `SL_SEGMENTS` parsing (`_parse_segments`, `_has_segment`, `_segment_opts`). Width values capped at 128.
-- **Lines ~116-155**: Color conversion (`hex_to_rgb`, `hex_to_256`) with hex length validation, and truecolor/256-color terminal detection via `COLORTERM` env var
-- **Lines ~156-340**: Theme system — `THEMES` dict (dark/light, Nord-inspired), `_load_custom_theme()` loads optional `~/.claude/claude-code-theme.toml` via `tomllib`
-- **Lines ~456**: `get_git_branch()` — subprocess call to `git branch --show-current`, strips ESC characters from output
-- **Lines ~559**: `fetch_usage_data()` — OAuth API call via `curl` subprocess, cached atomically to `~/.claude/.usage_cache.json` for `USAGE_CACHE_DURATION` seconds
-- **Lines ~626-753**: Usage gauge rendering — vertical (block chars ▁▂▃▄▅▆▇█) and horizontal blocks styles with forward-looking ratio logic
-- **Lines ~756**: `format_usage_indicators()` — returns dict with per-window usage strings
-- **Lines ~849-917**: Segment renderers — `_render_model`, `_render_progress_bar`, `_render_percentage`, `_render_tokens`, `_render_directory`, `_render_git_branch`, `_render_usage_5hour`, `_render_usage_weekly` + `SEGMENT_RENDERERS` dict
-- **Lines ~925**: `build_progress_bar()` — builds ctx dict, iterates SEGMENTS calling renderers
-- **Lines ~1036**: `build_na_line()` — iterates SEGMENTS for N/A display
-- **Lines ~1253**: `main()` — entry point, handles demo modes and normal stdin flow
+- **Lines 34-115**: Configuration — `SL_THEME`/`SL_USAGE_CACHE_DURATION`/`SL_UPDATE_CACHE_DURATION`/`SL_UPDATE_RETRY_DURATION`/`SL_THEME_FILE` globals, then `SL_SEGMENTS` parsing (`_parse_segments`, `_has_segment`, `_segment_opts`). Width values capped at 128.
+- **Lines ~116-165**: Color conversion (`hex_to_rgb`, `hex_to_256`) with hex length validation, and truecolor/256-color terminal detection via `COLORTERM` env var
+- **Lines ~170-355**: Theme system — `THEMES` dict (dark/light, Nord-inspired), `_load_custom_theme()` loads optional `~/.claude/claude-code-theme.toml` via `tomllib`
+- **Lines ~468**: `get_git_branch()` — subprocess call to `git branch --show-current`, strips ESC characters from output
+- **Lines ~571**: `fetch_usage_data()` — OAuth API call via `curl` subprocess, cached atomically to `~/.claude/.usage_cache.json` for `USAGE_CACHE_DURATION` seconds
+- **Lines ~639-746**: Update checker — `get_installed_version()` runs `claude --version`, `fetch_latest_version()` queries npm registry with caching to `~/.claude/.update_cache.json`, `check_for_update()` compares versions via `parse_semver()`
+- **Lines ~749-870**: Usage gauge rendering — vertical (block chars ▁▂▃▄▅▆▇█) and horizontal blocks styles with forward-looking ratio logic
+- **Lines ~872**: `format_usage_indicators()` — returns dict with per-window usage strings
+- **Lines ~967-948**: Segment renderers — `_render_model`, `_render_progress_bar`, `_render_percentage`, `_render_tokens`, `_render_directory`, `_render_git_branch`, `_render_usage_5hour`, `_render_usage_weekly`, `_render_update` + `SEGMENT_RENDERERS` dict
+- **Lines ~957**: `build_progress_bar()` — builds ctx dict, iterates SEGMENTS calling renderers
+- **Lines ~1068`: `build_na_line()` — iterates SEGMENTS for N/A display
+- **Lines ~1487**: `main()` — entry point, handles demo modes and normal stdin flow
 
 ## Code Patterns
 
 - **Segment system**: `SL_SEGMENTS` env var controls visibility, order, and per-segment options. Parsed into `[(name, {opts}), ...]` list. Each segment has a renderer function receiving `(ctx, opts)`. Unknown names silently filtered.
-- **Configuration**: global settings via `SL_THEME`, `SL_USAGE_CACHE_DURATION`, `SL_THEME_FILE`. All per-segment config (bar width, gauge style, fallback display, hide default branch) via colon-separated options in `SL_SEGMENTS`.
+- **Configuration**: global settings via `SL_THEME`, `SL_USAGE_CACHE_DURATION`, `SL_UPDATE_CACHE_DURATION`, `SL_UPDATE_RETRY_DURATION`, `SL_THEME_FILE`. All per-segment config (bar width, gauge style, fallback display, hide default branch) via colon-separated options in `SL_SEGMENTS`.
+- **Update checker**: fetches latest version from npm registry (`@anthropic-ai/claude-code`), compares with `claude --version` output. Cached to `~/.claude/.update_cache.json` — success cached for `UPDATE_CACHE_DURATION` (1h), failures retry after `UPDATE_RETRY_DURATION` (10min). Falls back to stale cache when offline.
 - **Color handling**: hex colors converted to both truecolor RGB escape sequences and 256-color fallbacks. `hex_to_rgb()` validates 6-char length; `hex_to_256()` falls back to color 0 on invalid input. Theme colors are always hex strings; conversion happens at render time.
 - **Custom themes**: loaded via `tomllib` from a TOML file (Python 3.11+, `tomli` fallback), only the defined keys override the base theme. Silently skipped if no TOML parser available.
 - **Progress bar precision**: Unicode fractional blocks (▏▎▍▌▋▊▉█) for sub-character precision with gradient color interpolation across 10 thresholds.
