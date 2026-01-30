@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Single-file Python statusline script for Claude Code CLI. Displays context window usage, model info, budget tracking, git status, and update notifications as a colored single-line bar. Stdlib only (json, os, subprocess, sys, tempfile, time, datetime). Custom themes require `tomllib` (Python 3.11+ stdlib) or optional `tomli` package.
+Single-file Python statusline script for Claude Code CLI. Displays context window usage, model info, budget tracking, git status, and update notifications as a colored status bar (single or multi-line). Stdlib only (json, os, subprocess, sys, tempfile, time, datetime). Custom themes require `tomllib` (Python 3.11+ stdlib) or optional `tomli` package.
 
 ## Running and Testing
 
@@ -34,7 +34,7 @@ echo '{"model":"claude-sonnet-4-20250514","cwd":"/tmp","contextWindow":{"used_pe
 
 The script is a single pipeline: **JSON stdin → parse → compute → render ANSI line → stdout**.
 
-Key sections in `claude-code-status-line.py` (~1,710 lines):
+Key sections in `claude-code-status-line.py` (~1,900 lines):
 
 - **Lines 34-115**: Configuration — `SL_THEME`/`SL_USAGE_CACHE_DURATION`/`SL_UPDATE_CACHE_DURATION`/`SL_UPDATE_RETRY_DURATION`/`SL_THEME_FILE` globals, then `SL_SEGMENTS` parsing (`_parse_segments`, `_has_segment`, `_segment_opts`). Width values capped at 128.
 - **Lines ~116-165**: Color conversion (`hex_to_rgb`, `hex_to_256`) with hex length validation, and truecolor/256-color terminal detection via `COLORTERM` env var
@@ -44,14 +44,15 @@ Key sections in `claude-code-status-line.py` (~1,710 lines):
 - **Lines ~639-746**: Update checker — `get_installed_version()` runs `claude --version`, `fetch_latest_version()` queries npm registry with caching to `~/.claude/.update_cache.json`, `check_for_update()` compares versions via `parse_semver()`
 - **Lines ~749-870**: Usage gauge rendering — vertical (block chars ▁▂▃▄▅▆▇█) and horizontal blocks styles with forward-looking ratio logic
 - **Lines ~872**: `format_usage_indicators()` — returns dict with per-window usage strings
-- **Lines ~967-948**: Segment renderers — `_render_model`, `_render_progress_bar`, `_render_percentage`, `_render_tokens`, `_render_directory`, `_render_git_branch`, `_render_usage_5hour`, `_render_usage_weekly`, `_render_update` + `SEGMENT_RENDERERS` dict
-- **Lines ~957**: `build_progress_bar()` — builds ctx dict, iterates SEGMENTS calling renderers
-- **Lines ~1068`: `build_na_line()` — iterates SEGMENTS for N/A display
-- **Lines ~1487**: `main()` — entry point, handles demo modes and normal stdin flow
+- **Lines ~1125-1220**: Segment renderers — `_render_model`, `_render_progress_bar`, `_render_percentage`, `_render_tokens`, `_render_directory`, `_render_git_branch`, `_render_usage_5hour`, `_render_usage_weekly`, `_render_update`, `_render_context_na_message`, `_render_new_line` + `SEGMENT_RENDERERS` dict
+- **Lines ~1229**: `_join_parts()` — joins segment parts with newline-aware flush-left behavior for multi-line layouts
+- **Lines ~1246**: `build_progress_bar()` — builds ctx dict, iterates SEGMENTS calling renderers, uses `_join_parts`
+- **Lines ~1359**: `build_na_line()` — builds N/A display with `na_mode` context flag, skips session segments
+- **Lines ~1781**: `main()` — entry point, handles demo modes and normal stdin flow
 
 ## Code Patterns
 
-- **Segment system**: `SL_SEGMENTS` env var controls visibility, order, and per-segment options. Parsed into `[(name, {opts}), ...]` list. Each segment has a renderer function receiving `(ctx, opts)`. Unknown names silently filtered.
+- **Segment system**: `SL_SEGMENTS` env var controls visibility, order, and per-segment options. Parsed into `[(name, {opts}), ...]` list. Each segment has a renderer function receiving `(ctx, opts)`. Unknown names silently filtered. Special `new_line` segment enables multi-line layouts; `context_na_message` shows N/A text only when context data unavailable.
 - **Configuration**: global settings via `SL_THEME`, `SL_USAGE_CACHE_DURATION`, `SL_UPDATE_CACHE_DURATION`, `SL_UPDATE_RETRY_DURATION`, `SL_SHOW_STATUSLINE_UPDATE`, `SL_THEME_FILE`. All per-segment config (bar width, gauge style, fallback display, hide default branch) via colon-separated options in `SL_SEGMENTS`.
 - **Update checker**: fetches latest version from npm registry (`@anthropic-ai/claude-code`), compares with `claude --version` output. Cached to `~/.claude/.update_cache.json` — success cached for `UPDATE_CACHE_DURATION` (1h), failures retry after `UPDATE_RETRY_DURATION` (10min). Falls back to stale cache when offline.
 - **Self-update**: `--self-update` flag downloads latest version from GitHub and replaces the script atomically. Status line update notifications appear on a separate line below the main output with the update command. Controlled by `SL_SHOW_STATUSLINE_UPDATE` (default on).

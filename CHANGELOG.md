@@ -5,10 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [3.1.0] - Unreleased
+## [4.0.0] - 2026-01-30
+
+### Breaking
+- Users with custom `SL_SEGMENTS` must add `context_na_message` segment to see N/A fallback text when session data is unavailable
 
 ### Added
-- Update checker (checks for new releases on startup)
+- `new_line` segment for multi-line statusline layouts
+- `context_na_message` segment for explicit N/A message control
+
+### Changed
+- N/A message handling refactored to use segment system
+- Segments joined with newline-aware logic (flush left after each newline)
+
+## [3.3.0] - 2026-01-29
+
+### Added
+- `--self-update` flag to download and install latest version from GitHub
+- Status line update notifications appear on separate line below main output
+- `SL_SHOW_STATUSLINE_UPDATE` env var to control update notifications
+
+## [3.2.0] - 2026-01-29
+
+### Added
+- Self-update checker for status line script (checks GitHub releases)
+- `SL_STATUSLINE_CACHE_DURATION` env var for update check interval
+
+## [3.1.0] - 2026-01-29
+
+### Added
+- Update checker (checks for new Claude Code releases on startup)
 
 ## [3.0.0] - 2026-01-28
 

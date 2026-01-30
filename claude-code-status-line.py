@@ -35,7 +35,7 @@ import time
 import tty
 from datetime import datetime, timezone
 
-VERSION = "3.3.0"
+VERSION = "4.0.0"
 
 # =============================================================================
 # CONFIGURATION — override any setting via environment variables (SL_ prefix)
@@ -67,9 +67,9 @@ THEME_FILE = _env_str(
 # --- Segment system ---
 
 DEFAULT_SEGMENTS = (
-    "update model progress_bar percentage tokens directory git_branch usage_5hour usage_weekly"
+    "update model context_na_message progress_bar percentage tokens directory git_branch usage_5hour usage_weekly"
 )
-VALID_SEGMENTS = frozenset(DEFAULT_SEGMENTS.split())
+VALID_SEGMENTS = frozenset(DEFAULT_SEGMENTS.split() + ["new_line"])
 
 SEGMENT_DEFAULTS = {
     "progress_bar": {"width": "12"},
@@ -1194,6 +1194,18 @@ def _render_update(ctx, opts):
     return f"   {BOLD}{color}{latest} available! "
 
 
+def _render_context_na_message(ctx, opts):
+    """Render context N/A message only when session data unavailable"""
+    if ctx.get("na_mode"):
+        return f" {text_color('na')}  context size N/A"
+    return ""
+
+
+def _render_new_line(ctx, opts):
+    """Return newline marker for multi-line output"""
+    return "\n"
+
+
 SEGMENT_RENDERERS = {
     "model": _render_model,
     "progress_bar": _render_progress_bar,
@@ -1204,12 +1216,31 @@ SEGMENT_RENDERERS = {
     "usage_5hour": _render_usage_5hour,
     "usage_weekly": _render_usage_weekly,
     "update": _render_update,
+    "context_na_message": _render_context_na_message,
+    "new_line": _render_new_line,
 }
 
 
 # =============================================================================
 # MAIN STATUS LINE BUILDER
 # =============================================================================
+
+
+def _join_parts(parts):
+    """Join segment parts, handling newlines with flush-left behavior"""
+    output = ""
+    at_line_start = True
+    for part in parts:
+        if part == "\n":
+            output += RESET + "\n"
+            at_line_start = True
+        elif part:
+            if at_line_start:
+                output += part.lstrip()
+                at_line_start = False
+            else:
+                output += part
+    return output
 
 
 def build_progress_bar(
@@ -1322,42 +1353,33 @@ def build_progress_bar(
                 parts.append(result)
     parts.append(RESET)
 
-    return "".join(parts)
+    return _join_parts(parts)
 
 
 def build_na_line(model, cwd):
     """Build status line when no usage data available"""
-    na_text = f" {text_color('na')}  context size N/A"
     ctx = {
         "model": model,
         "model_color": get_model_colors(model),
         "cwd": cwd,
+        "na_mode": True,  # Signals not_available_message to render
     }
 
+    # Session segments render nothing in N/A mode
     session_segments = frozenset(("progress_bar", "percentage", "tokens"))
+
     parts = []
-    na_inserted = False
     for name, opts in SEGMENTS:
-        if name == "model":
-            parts.append(_render_model(ctx, opts))
-        elif name in ("directory", "git_branch"):
-            if not na_inserted:
-                parts.append(na_text)
-                na_inserted = True
-            renderer = SEGMENT_RENDERERS.get(name)
-            if renderer:
-                result = renderer(ctx, opts)
-                if result:
-                    parts.append(result)
-        elif name in session_segments and not na_inserted:
-            parts.append(na_text)
-            na_inserted = True
-
-    if not na_inserted:
-        parts.append(na_text)
-
+        if name in session_segments:
+            continue  # Skip session segments in N/A mode
+        renderer = SEGMENT_RENDERERS.get(name)
+        if renderer:
+            result = renderer(ctx, opts)
+            if result:
+                parts.append(result)
     parts.append(RESET)
-    return "".join(parts)
+
+    return _join_parts(parts)
 
 
 # =============================================================================

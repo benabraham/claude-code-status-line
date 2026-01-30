@@ -96,12 +96,13 @@ SL_SEGMENTS="model progress_bar:width=20 percentage tokens directory git_branch 
 
 Each token is `segment_name` optionally followed by `:key=value` pairs. Unknown segment names are silently ignored.
 
-**Default:** `update model progress_bar percentage tokens directory git_branch usage_5hour usage_weekly`
+**Default:** `update model context_na_message progress_bar percentage tokens directory git_branch usage_5hour usage_weekly`
 
 | Segment | Description |
 |---|---|
 | `update` | Shows when a new Claude Code version is available |
 | `model` | Model badge (Opus/Sonnet/Haiku) |
+| `context_na_message` | Shows "context size N/A" when session data unavailable |
 | `progress_bar` | Context window progress bar |
 | `percentage` | Context usage percentage |
 | `tokens` | Token count (e.g. `84k/200k`) |
@@ -109,6 +110,7 @@ Each token is `segment_name` optionally followed by `:key=value` pairs. Unknown 
 | `git_branch` | Git branch indicator |
 | `usage_5hour` | 5-hour session usage gauge |
 | `usage_weekly` | 7-day weekly usage gauge |
+| `new_line` | Insert line break for multi-line layouts (not in defaults) |
 
 #### Segment options
 
@@ -143,6 +145,12 @@ SL_SEGMENTS='model progress_bar percentage usage_5hour:gauge=vertical usage_week
 
 # Show git branch even on main/master
 SL_SEGMENTS='model progress_bar percentage tokens directory git_branch:hide_default=0'
+
+# Multi-line layout: model and progress on first line, directory on second
+SL_SEGMENTS='model progress_bar percentage new_line directory git_branch'
+
+# Three-line layout with blank line separator
+SL_SEGMENTS='model progress_bar new_line new_line directory git_branch'
 
 # Empty string disables all segments
 SL_SEGMENTS=''
