@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [4.1.0] - 2026-01-31
+
+### Added
+- `SL_UPDATE_VERSION_CMD` env var to use a custom command for checking latest version (e.g., for Nix users)
+- `SL_UPDATE_VERSION_SOURCE` env var to customize the source label in update notifications
+- Cache auto-invalidates when version command changes
+
 ## [4.0.0] - 2026-01-30
 
 ### Breaking

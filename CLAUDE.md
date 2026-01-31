@@ -36,7 +36,7 @@ The script is a single pipeline: **JSON stdin → parse → compute → render A
 
 Key sections in `claude-code-status-line.py` (~1,900 lines):
 
-- **Lines 34-115**: Configuration — `SL_THEME`/`SL_USAGE_CACHE_DURATION`/`SL_UPDATE_CACHE_DURATION`/`SL_UPDATE_RETRY_DURATION`/`SL_THEME_FILE` globals, then `SL_SEGMENTS` parsing (`_parse_segments`, `_has_segment`, `_segment_opts`). Width values capped at 128.
+- **Lines 34-115**: Configuration — `SL_THEME`/`SL_USAGE_CACHE_DURATION`/`SL_UPDATE_CACHE_DURATION`/`SL_UPDATE_RETRY_DURATION`/`SL_UPDATE_VERSION_CMD`/`SL_UPDATE_VERSION_SOURCE`/`SL_THEME_FILE` globals, then `SL_SEGMENTS` parsing (`_parse_segments`, `_has_segment`, `_segment_opts`). Width values capped at 128.
 - **Lines ~116-165**: Color conversion (`hex_to_rgb`, `hex_to_256`) with hex length validation, and truecolor/256-color terminal detection via `COLORTERM` env var
 - **Lines ~170-355**: Theme system — `THEMES` dict (dark/light, Nord-inspired), `_load_custom_theme()` loads optional `~/.claude/claude-code-theme.toml` via `tomllib`
 - **Lines ~468**: `get_git_branch()` — subprocess call to `git branch --show-current`, strips ESC characters from output
@@ -53,8 +53,8 @@ Key sections in `claude-code-status-line.py` (~1,900 lines):
 ## Code Patterns
 
 - **Segment system**: `SL_SEGMENTS` env var controls visibility, order, and per-segment options. Parsed into `[(name, {opts}), ...]` list. Each segment has a renderer function receiving `(ctx, opts)`. Unknown names silently filtered. Special `new_line` segment enables multi-line layouts; `context_na_message` shows N/A text only when context data unavailable.
-- **Configuration**: global settings via `SL_THEME`, `SL_USAGE_CACHE_DURATION`, `SL_UPDATE_CACHE_DURATION`, `SL_UPDATE_RETRY_DURATION`, `SL_SHOW_STATUSLINE_UPDATE`, `SL_THEME_FILE`. All per-segment config (bar width, gauge style, fallback display, hide default branch) via colon-separated options in `SL_SEGMENTS`.
-- **Update checker**: fetches latest version from npm registry (`@anthropic-ai/claude-code`), compares with `claude --version` output. Cached to `~/.claude/.update_cache.json` — success cached for `UPDATE_CACHE_DURATION` (1h), failures retry after `UPDATE_RETRY_DURATION` (10min). Falls back to stale cache when offline.
+- **Configuration**: global settings via `SL_THEME`, `SL_USAGE_CACHE_DURATION`, `SL_UPDATE_CACHE_DURATION`, `SL_UPDATE_RETRY_DURATION`, `SL_UPDATE_VERSION_CMD`, `SL_UPDATE_VERSION_SOURCE`, `SL_SHOW_STATUSLINE_UPDATE`, `SL_THEME_FILE`. All per-segment config (bar width, gauge style, fallback display, hide default branch) via colon-separated options in `SL_SEGMENTS`.
+- **Update checker**: fetches latest version from npm registry (`@anthropic-ai/claude-code`) or custom command (`SL_UPDATE_VERSION_CMD`), compares with `claude --version` output. Custom command runs via `sh -c` with 10s timeout; falls back to npm if it fails. Returns `(version, source)` tuple where source is `npm`, `custom`, or `npm_fallback`. Cached to `~/.claude/.update_cache.json` — success cached for `UPDATE_CACHE_DURATION` (1h), failures retry after `UPDATE_RETRY_DURATION` (10min). Falls back to stale cache when offline.
 - **Self-update**: `--self-update` flag downloads latest version from GitHub and replaces the script atomically. Status line update notifications appear on a separate line below the main output with the update command. Controlled by `SL_SHOW_STATUSLINE_UPDATE` (default on).
 - **Color handling**: hex colors converted to both truecolor RGB escape sequences and 256-color fallbacks. `hex_to_rgb()` validates 6-char length; `hex_to_256()` falls back to color 0 on invalid input. Theme colors are always hex strings; conversion happens at render time.
 - **Custom themes**: loaded via `tomllib` from a TOML file (Python 3.11+, `tomli` fallback), only the defined keys override the base theme. Silently skipped if no TOML parser available.

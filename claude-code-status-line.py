@@ -58,6 +58,8 @@ THEME = _env_str("THEME", "dark")
 USAGE_CACHE_DURATION = _env_int("USAGE_CACHE_DURATION", 300)
 UPDATE_CACHE_DURATION = _env_int("UPDATE_CACHE_DURATION", 3600)  # 1 hour on success
 UPDATE_RETRY_DURATION = _env_int("UPDATE_RETRY_DURATION", 600)  # 10 min retry on failure
+UPDATE_VERSION_CMD = _env_str("UPDATE_VERSION_CMD", "")  # Custom command to fetch latest version
+UPDATE_VERSION_SOURCE = _env_str("UPDATE_VERSION_SOURCE", "custom")  # Label for custom source
 STATUSLINE_CACHE_DURATION = _env_int("STATUSLINE_CACHE_DURATION", 86400)  # 24 hours
 SHOW_STATUSLINE_UPDATE = _env_str("SHOW_STATUSLINE_UPDATE", "1") == "1"
 THEME_FILE = _env_str(
@@ -675,30 +677,8 @@ def parse_semver(version):
         return (0, 0, 0)
 
 
-def fetch_latest_version():
-    """Fetch latest Claude Code version from npm, with caching."""
-    cached_version = None
-
-    # Check cache first
-    try:
-        if os.path.exists(UPDATE_CACHE_PATH):
-            with open(UPDATE_CACHE_PATH, "r") as f:
-                cache = json.load(f)
-            age = time.time() - cache.get("timestamp", 0)
-            cached_version = cache.get("version")
-            # Success cache: use UPDATE_CACHE_DURATION (1h default)
-            # Failure cache: use UPDATE_RETRY_DURATION (10min default)
-            if cached_version:
-                if age < UPDATE_CACHE_DURATION:
-                    return cached_version
-            else:
-                if age < UPDATE_RETRY_DURATION:
-                    return None  # Still in failure cooldown
-    except (IOError, json.JSONDecodeError):
-        pass
-
-    # Fetch from npm registry
-    version = None
+def _fetch_version_from_npm():
+    """Fetch latest version from npm registry. Returns version string or None."""
     try:
         result = subprocess.run(
             [
@@ -713,13 +693,92 @@ def fetch_latest_version():
         )
         if result.returncode == 0:
             data = json.loads(result.stdout)
-            version = data.get("version")
+            return data.get("version")
     except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError):
         pass
+    return None
+
+
+def _fetch_version_from_custom_cmd():
+    """Run custom version command. Returns version string or None."""
+    if not UPDATE_VERSION_CMD:
+        return None
+
+    try:
+        result = subprocess.run(
+            ["sh", "-c", UPDATE_VERSION_CMD],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode == 0:
+            # Strip whitespace and surrounding quotes
+            output = result.stdout.strip().strip("'\"")
+            # Validate it looks like a semver version
+            if re.match(r"^\d+\.\d+\.\d+", output):
+                return output
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        pass
+    return None
+
+
+def fetch_latest_version():
+    """Fetch latest Claude Code version, with caching.
+
+    Returns (version, source) tuple where source is:
+    - "npm": no custom command configured, used npm
+    - "custom": custom command succeeded
+    - "npm_fallback": custom command failed, fell back to npm
+    Returns (None, None) if both fail.
+    """
+    cached_version = None
+    cached_source = None
+
+    # Check cache first
+    try:
+        if os.path.exists(UPDATE_CACHE_PATH):
+            with open(UPDATE_CACHE_PATH, "r") as f:
+                cache = json.load(f)
+            # Invalidate cache if version_cmd changed
+            if cache.get("version_cmd", "") != UPDATE_VERSION_CMD:
+                pass  # Skip cache, fetch fresh
+            else:
+                age = time.time() - cache.get("timestamp", 0)
+                cached_version = cache.get("version")
+                cached_source = cache.get("source", "npm")
+                # Success cache: use UPDATE_CACHE_DURATION (1h default)
+                # Failure cache: use UPDATE_RETRY_DURATION (10min default)
+                if cached_version:
+                    if age < UPDATE_CACHE_DURATION:
+                        return (cached_version, cached_source)
+                else:
+                    if age < UPDATE_RETRY_DURATION:
+                        return (None, None)  # Still in failure cooldown
+    except (IOError, json.JSONDecodeError):
+        pass
+
+    version = None
+    source = None
+
+    # Try custom command first if configured
+    if UPDATE_VERSION_CMD:
+        version = _fetch_version_from_custom_cmd()
+        if version:
+            source = "custom"
+        else:
+            # Custom command failed, fall back to npm
+            version = _fetch_version_from_npm()
+            if version:
+                source = "npm_fallback"
+    else:
+        # No custom command, use npm
+        version = _fetch_version_from_npm()
+        if version:
+            source = "npm"
 
     # If fetch failed but we have a cached version, return it (stale is better than nothing)
     if version is None and cached_version:
-        return cached_version
+        return (cached_version, cached_source)
 
     # Cache result (success or failure) atomically
     tmp_path = None
@@ -727,7 +786,12 @@ def fetch_latest_version():
         cache_dir = os.path.dirname(UPDATE_CACHE_PATH)
         fd, tmp_path = tempfile.mkstemp(dir=cache_dir)
         with os.fdopen(fd, "w") as f:
-            json.dump({"timestamp": time.time(), "version": version}, f)
+            json.dump({
+                "timestamp": time.time(),
+                "version": version,
+                "source": source,
+                "version_cmd": UPDATE_VERSION_CMD,
+            }, f)
         os.replace(tmp_path, UPDATE_CACHE_PATH)
     except (IOError, OSError):
         if tmp_path:
@@ -736,21 +800,21 @@ def fetch_latest_version():
             except OSError:
                 pass
 
-    return version
+    return (version, source)
 
 
 def check_for_update():
-    """Check if update available. Returns (installed, latest) or None."""
+    """Check if update available. Returns (installed, latest, source) or None."""
     installed = get_installed_version()
     if not installed:
         return None
 
-    latest = fetch_latest_version()
+    latest, source = fetch_latest_version()
     if not latest:
         return None
 
     if parse_semver(latest) > parse_semver(installed):
-        return (installed, latest)
+        return (installed, latest, source)
     return None
 
 
@@ -1187,11 +1251,23 @@ def _render_update(ctx, opts):
     update_info = ctx.get("update_info")
     if not update_info:
         return ""
-    installed, latest = update_info
+    installed, latest, source = update_info
     theme = THEMES[THEME]
     yellow_rgb, yellow_fb = theme["usage_yellow"]
     color = _color(yellow_rgb, yellow_fb, is_bg=False)
-    return f"   {BOLD}{color}{latest} available! "
+
+    if source == "npm":
+        # Standard npm source - simple message
+        return f"   {BOLD}{color}{latest} available! "
+    elif source == "custom":
+        # Custom command succeeded - show custom source label
+        return f"   {BOLD}{color}{latest} available ({UPDATE_VERSION_SOURCE})! "
+    elif source == "npm_fallback":
+        # Custom command failed, fell back to npm
+        return f"   {BOLD}{color}{latest} available from NPM! Custom source failed. "
+    else:
+        # Unknown source - fallback to simple message
+        return f"   {BOLD}{color}{latest} available! "
 
 
 def _render_context_na_message(ctx, opts):

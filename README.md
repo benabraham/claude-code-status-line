@@ -83,6 +83,8 @@ Alternatively, edit the defaults at the top of the script.
 | `SL_USAGE_CACHE_DURATION` | `300` | Usage API cache duration in seconds |
 | `SL_UPDATE_CACHE_DURATION` | `3600` | Update check cache duration in seconds (1 hour) |
 | `SL_UPDATE_RETRY_DURATION` | `600` | Update check retry interval on failure (10 min) |
+| `SL_UPDATE_VERSION_CMD` | (empty) | Custom command to fetch latest version (see below) |
+| `SL_UPDATE_VERSION_SOURCE` | `custom` | Label for custom version source (e.g., `numtide`, `nixpkgs`) |
 | `SL_SHOW_STATUSLINE_UPDATE` | `1` | Show status line update notifications (`0` to disable) |
 | `SL_THEME_FILE` | `~/.claude/claude-code-theme.toml` | Path to custom theme file (see below) |
 
@@ -161,6 +163,30 @@ SL_SEGMENTS=''
 The script gets context usage from the Claude Code API (`used_percentage`). It also calculates token counts from the conversation transcript as a fallback. When the `fallback` option is enabled on the `percentage` and/or `tokens` segments and these two values differ by more than 10%, the fallback value is shown in red curly braces (e.g. `{84k}` or `{42 %}`). This helps spot cases where the API percentage may be inaccurate.
 
 **Note:** The context window size reported by Claude Code may not always reflect the actual context available. There are known bugs in Claude Code where the reported `used_percentage` or token counts can be inaccurate. The fallback comparison helps detect these discrepancies.
+
+### Custom Version Command
+
+If you install Claude Code from an alternative package manager (e.g., Nix), you can configure a custom command to check for updates from your package source instead of npm.
+
+Set `SL_UPDATE_VERSION_CMD` to a shell command that outputs a version string (e.g., `1.0.50`). The command runs via `sh -c` with a 10-second timeout. If it fails or returns invalid output, the script falls back to npm.
+
+Use `SL_UPDATE_VERSION_SOURCE` to customize the label shown in update notifications (e.g., `numtide`, `nixpkgs`, `brew`).
+
+**Example for Nix (numtide/llm-agents.nix):**
+
+```json
+{
+  "env": {
+    "SL_UPDATE_VERSION_CMD": "nix eval github:numtide/llm-agents.nix#claude-code.version 2>/dev/null",
+    "SL_UPDATE_VERSION_SOURCE": "numtide"
+  }
+}
+```
+
+With this configuration:
+- If the custom command succeeds: `2.1.27 available (numtide)!`
+- If the custom command fails (falls back to npm): `2.1.27 available from NPM! Custom source failed.`
+- If no custom command is set: `2.1.27 available!`
 
 ### Custom Themes
 
