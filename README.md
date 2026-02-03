@@ -83,6 +83,7 @@ Alternatively, edit the defaults at the top of the script.
 | `SL_USAGE_CACHE_DURATION` | `300` | Usage API cache duration in seconds |
 | `SL_UPDATE_CACHE_DURATION` | `3600` | Update check cache duration in seconds (1 hour) |
 | `SL_UPDATE_RETRY_DURATION` | `600` | Update check retry interval on failure (10 min) |
+| `SL_UPDATE_CUSTOM_RETRY_DURATION` | `120` | Retry interval for custom version command failures (2 min) |
 | `SL_UPDATE_VERSION_CMD` | (empty) | Custom command to fetch latest version (see below) |
 | `SL_UPDATE_VERSION_SOURCE` | `custom` | Label for custom version source (e.g., `numtide`, `nixpkgs`) |
 | `SL_SHOW_STATUSLINE_UPDATE` | `1` | Show status line update notifications (`0` to disable) |

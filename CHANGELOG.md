@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [4.3.0] - 2026-02-03
+
+### Added
+- `SL_UPDATE_CUSTOM_RETRY_DURATION` env var for faster retry after custom version command failures (2 min default vs 10 min for total failures)
+
+### Improved
+- Custom version command now retries 3 times with 1s delay before falling back to npm
+- Better resilience for transient failures (e.g., cold nix cache, network hiccups)
+
 ## [4.2.0] - 2026-02-03
 
 ### Added
