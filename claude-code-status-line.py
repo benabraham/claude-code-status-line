@@ -71,7 +71,7 @@ THEME_FILE = _env_str(
 DEFAULT_SEGMENTS = (
     "update model context_na_message progress_bar percentage tokens directory git_branch usage_5hour usage_weekly"
 )
-VALID_SEGMENTS = frozenset(DEFAULT_SEGMENTS.split() + ["new_line"])
+VALID_SEGMENTS = frozenset(DEFAULT_SEGMENTS.split() + ["new_line", "usage_burndown"])
 
 SEGMENT_DEFAULTS = {
     "progress_bar": {"width": "12"},
@@ -1088,6 +1088,30 @@ def get_usage_gauge_blocks(ratio, gauge_width=4):
     return "".join(parts) + RESET
 
 
+def _format_burndown_early(seconds_early):
+    """Format how much earlier budget will deplete vs window reset."""
+    if seconds_early <= 0:
+        return ""  # On track or ahead, no warning needed
+
+    days = int(seconds_early // 86400)
+    hours = int((seconds_early % 86400) // 3600)
+    minutes = int((seconds_early % 3600) // 60)
+
+    parts = []
+    if days > 0:
+        parts.append(f"{days} day{'s' if days != 1 else ''}")
+    if hours > 0:
+        parts.append(f"{hours} hour{'s' if hours != 1 else ''}")
+    # Only show minutes when days is 0
+    if days == 0 and minutes > 0:
+        parts.append(f"{minutes} minute{'s' if minutes != 1 else ''}")
+
+    if not parts:
+        return "will run out now"
+
+    return "will run out " + " ".join(parts) + " sooner"
+
+
 def format_usage_indicators(usage_data):
     """Format usage indicators, returning dict of {segment_name: rendered_string}."""
     if usage_data is None:
@@ -1161,6 +1185,24 @@ def format_usage_indicators(usage_data):
             elif remaining_pct <= 10 and ratio >= 0.75:
                 color = get_usage_color(0.8)
 
+        # Calculate burndown for yellow/red zone (ratio < 1.0)
+        if api_key == "seven_day" and ratio < 1.0 and elapsed_seconds > 0 and utilization_pct > 0:
+            burn_rate = utilization_pct / elapsed_seconds
+            remaining_budget = 100 - utilization_pct
+            if burn_rate > 0:
+                seconds_to_depletion = remaining_budget / burn_rate
+                # Time until window resets
+                seconds_until_reset = reset_dt.timestamp() - now.timestamp()
+                # How much earlier will we run out?
+                seconds_early = seconds_until_reset - seconds_to_depletion
+                if seconds_early > 0:
+                    results["weekly_burndown"] = _format_burndown_early(seconds_early)
+                    theme = THEMES[THEME]
+                    # Orange in yellow zone, red in red zone
+                    color_key = "usage_yellow" if ratio >= 0.75 else "usage_red"
+                    rgb, fallback = theme[color_key]
+                    results["weekly_burndown_color"] = _color(rgb, fallback, is_bg=False)
+
         gauge_style = opts.get("gauge", "blocks")
         gauge_width = int(opts.get("width", "4"))
         if gauge_style == "none":
@@ -1177,6 +1219,12 @@ def format_usage_indicators(usage_data):
     for seg in ("usage_5hour", "usage_weekly"):
         if seg not in results:
             results[seg] = ""
+
+    # Ensure burndown keys exist
+    if "weekly_burndown" not in results:
+        results["weekly_burndown"] = ""
+    if "weekly_burndown_color" not in results:
+        results["weekly_burndown_color"] = ""
 
     return results
 
@@ -1247,6 +1295,15 @@ def _render_usage_weekly(ctx, opts):
     return ctx.get("usage_weekly", "")
 
 
+def _render_usage_burndown(ctx, opts):
+    burndown = ctx.get("usage_weekly_burndown", "")
+    if not burndown:
+        return ""
+    color = ctx.get("usage_weekly_burndown_color", "")
+    reset = RESET
+    return f"   {color}{burndown}{reset}"
+
+
 def _render_update(ctx, opts):
     update_info = ctx.get("update_info")
     if not update_info:
@@ -1291,6 +1348,7 @@ SEGMENT_RENDERERS = {
     "git_branch": _render_git_branch,
     "usage_5hour": _render_usage_5hour,
     "usage_weekly": _render_usage_weekly,
+    "usage_burndown": _render_usage_burndown,
     "update": _render_update,
     "context_na_message": _render_context_na_message,
     "new_line": _render_new_line,
@@ -1329,6 +1387,8 @@ def build_progress_bar(
     calc_pct=None,
     usage_5hour="",
     usage_weekly="",
+    usage_weekly_burndown="",
+    usage_weekly_burndown_color="",
     update_info=None,
 ):
     """Build the full status line string"""
@@ -1417,6 +1477,8 @@ def build_progress_bar(
         "cwd": cwd,
         "usage_5hour": usage_5hour,
         "usage_weekly": usage_weekly,
+        "usage_weekly_burndown": usage_weekly_burndown,
+        "usage_weekly_burndown_color": usage_weekly_burndown_color,
         "update_info": update_info,
     }
 
@@ -1950,6 +2012,8 @@ def main():
             calc_pct,
             usage_5hour=usage_parts["usage_5hour"],
             usage_weekly=usage_parts["usage_weekly"],
+            usage_weekly_burndown=usage_parts.get("weekly_burndown", ""),
+            usage_weekly_burndown_color=usage_parts.get("weekly_burndown_color", ""),
             update_info=update_info,
         )
     )
