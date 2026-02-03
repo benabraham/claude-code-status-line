@@ -1,3 +1,4 @@
 gen-screenshots.py
 __pycache__/
 .claude
+firebase-debug.log
