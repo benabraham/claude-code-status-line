@@ -58,6 +58,7 @@ THEME = _env_str("THEME", "dark")
 USAGE_CACHE_DURATION = _env_int("USAGE_CACHE_DURATION", 300)
 UPDATE_CACHE_DURATION = _env_int("UPDATE_CACHE_DURATION", 3600)  # 1 hour on success
 UPDATE_RETRY_DURATION = _env_int("UPDATE_RETRY_DURATION", 600)  # 10 min retry on failure
+UPDATE_CUSTOM_RETRY_DURATION = _env_int("UPDATE_CUSTOM_RETRY_DURATION", 120)  # 2 min retry for custom source failures
 UPDATE_VERSION_CMD = _env_str("UPDATE_VERSION_CMD", "")  # Custom command to fetch latest version
 UPDATE_VERSION_SOURCE = _env_str("UPDATE_VERSION_SOURCE", "custom")  # Label for custom source
 STATUSLINE_CACHE_DURATION = _env_int("STATUSLINE_CACHE_DURATION", 86400)  # 24 hours
@@ -699,26 +700,30 @@ def _fetch_version_from_npm():
     return None
 
 
-def _fetch_version_from_custom_cmd():
-    """Run custom version command. Returns version string or None."""
+def _fetch_version_from_custom_cmd(retries=3):
+    """Run custom version command with retries. Returns version string or None."""
     if not UPDATE_VERSION_CMD:
         return None
 
-    try:
-        result = subprocess.run(
-            ["sh", "-c", UPDATE_VERSION_CMD],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        if result.returncode == 0:
-            # Strip whitespace and surrounding quotes
-            output = result.stdout.strip().strip("'\"")
-            # Validate it looks like a semver version
-            if re.match(r"^\d+\.\d+\.\d+", output):
-                return output
-    except (subprocess.TimeoutExpired, FileNotFoundError):
-        pass
+    for attempt in range(retries):
+        try:
+            result = subprocess.run(
+                ["sh", "-c", UPDATE_VERSION_CMD],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if result.returncode == 0:
+                # Strip whitespace and surrounding quotes
+                output = result.stdout.strip().strip("'\"")
+                # Validate it looks like a semver version
+                if re.match(r"^\d+\.\d+\.\d+", output):
+                    return output
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            pass
+        # Brief pause between retries
+        if attempt < retries - 1:
+            time.sleep(1)
     return None
 
 
@@ -747,12 +752,15 @@ def fetch_latest_version():
                 cached_version = cache.get("version")
                 cached_source = cache.get("source", "npm")
                 # Success cache: use UPDATE_CACHE_DURATION (1h default)
-                # Failure cache: use UPDATE_RETRY_DURATION (10min default)
+                # Failure cache: use UPDATE_RETRY_DURATION (10min) or UPDATE_CUSTOM_RETRY_DURATION (2min)
                 if cached_version:
                     if age < UPDATE_CACHE_DURATION:
                         return (cached_version, cached_source)
                 else:
-                    if age < UPDATE_RETRY_DURATION:
+                    # Use shorter retry for custom source failures (more likely to be transient)
+                    failed_source = cache.get("failed_source")
+                    cooldown = UPDATE_CUSTOM_RETRY_DURATION if failed_source == "custom" else UPDATE_RETRY_DURATION
+                    if age < cooldown:
                         return (None, None)  # Still in failure cooldown
     except (IOError, json.JSONDecodeError):
         pass
@@ -781,6 +789,13 @@ def fetch_latest_version():
         return (cached_version, cached_source)
 
     # Cache result (success or failure) atomically
+    # Track failed_source to use shorter retry for custom command failures
+    failed_source = None
+    if version is None and UPDATE_VERSION_CMD:
+        failed_source = "custom"  # Custom command was attempted but failed
+    elif source == "npm_fallback":
+        failed_source = "custom"  # Custom command failed, fell back to npm
+
     tmp_path = None
     try:
         cache_dir = os.path.dirname(UPDATE_CACHE_PATH)
@@ -791,6 +806,7 @@ def fetch_latest_version():
                 "version": version,
                 "source": source,
                 "version_cmd": UPDATE_VERSION_CMD,
+                "failed_source": failed_source,
             }, f)
         os.replace(tmp_path, UPDATE_CACHE_PATH)
     except (IOError, OSError):
