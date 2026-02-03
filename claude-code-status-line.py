@@ -35,7 +35,7 @@ import time
 import tty
 from datetime import datetime, timezone
 
-VERSION = "4.1.1"
+VERSION = "4.2.0"
 
 # =============================================================================
 # CONFIGURATION — override any setting via environment variables (SL_ prefix)
