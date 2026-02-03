@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [4.2.0] - 2026-02-03
+
+### Added
+- `usage_burndown` segment showing how much sooner weekly budget will deplete vs reset time
+- Displays "will run out X days Y hours sooner" when burning faster than sustainable (ratio < 1.0)
+- Color-coded: orange in yellow zone (ratio ≥ 0.75), red in red zone (ratio < 0.75)
+
 ## [4.1.0] - 2026-01-31
 
 ### Added

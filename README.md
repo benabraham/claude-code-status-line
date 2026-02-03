@@ -112,6 +112,7 @@ Each token is `segment_name` optionally followed by `:key=value` pairs. Unknown 
 | `git_branch` | Git branch indicator |
 | `usage_5hour` | 5-hour session usage gauge |
 | `usage_weekly` | 7-day weekly usage gauge |
+| `usage_burndown` | Shows how much sooner weekly budget will run out (not in defaults) |
 | `new_line` | Insert line break for multi-line layouts (not in defaults) |
 
 #### Segment options
@@ -308,6 +309,8 @@ The same logic applies to the 7-day weekly limit. This means 50% usage isn't ala
 Color thresholds: **≥ 1.33** light (well ahead) · **≥ 1.0** green (on track) · **≥ 0.75** yellow (faster than sustainable) · **< 0.75** red (will run out).
 
 **5-hour safety override:** Regardless of ratio, the 5-hour gauge forces red when ≤ 5% budget remains, and orange when ≤ 10% remains. This catches cases where the ratio looks fine but you're about to hit the limit.
+
+**Burndown warning (`usage_burndown` segment):** When the weekly ratio drops below 1.0, the optional `usage_burndown` segment shows how much sooner you'll deplete your budget compared to the window reset time (e.g., "will run out 2 days 4 hours sooner"). Color-coded: orange in yellow zone (ratio ≥ 0.75), red in red zone (ratio < 0.75).
 
 ### Truecolor Detection
 
