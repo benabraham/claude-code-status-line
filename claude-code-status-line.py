@@ -70,7 +70,7 @@ THEME_FILE = _env_str(
 # --- Segment system ---
 
 DEFAULT_SEGMENTS = (
-    "update model context_na_message progress_bar percentage tokens directory git_branch usage_5hour usage_weekly"
+    "update model context_na_message progress_bar percentage tokens directory git_branch git_status usage_5hour usage_weekly"
 )
 VALID_SEGMENTS = frozenset(DEFAULT_SEGMENTS.split() + ["new_line", "usage_burndown"])
 
@@ -492,6 +492,82 @@ def get_git_branch(cwd):
     except Exception:
         pass
     return None
+
+
+def get_git_status(cwd):
+    """Get git status indicators (staged, modified, etc.)"""
+    try:
+        # Get porcelain status for working directory state
+        result = subprocess.run(
+            ["git", "-C", cwd, "status", "--porcelain=v1"],
+            capture_output=True,
+            text=True,
+            timeout=0.3,
+        )
+        if result.returncode != 0:
+            return None
+
+        staged = modified = deleted = renamed = untracked = conflicted = 0
+        for line in result.stdout.splitlines():
+            if len(line) < 2:
+                continue
+            x, y = line[0], line[1]
+            # Conflict states
+            if x == 'U' or y == 'U' or (x == 'A' and y == 'A') or (x == 'D' and y == 'D'):
+                conflicted += 1
+            else:
+                # Index (staged) changes
+                if x in 'MARC':
+                    staged += 1
+                if x == 'R':
+                    renamed += 1
+                if x == 'D':
+                    deleted += 1
+                # Worktree changes
+                if y == 'M':
+                    modified += 1
+                if y == 'D':
+                    deleted += 1
+                if y == '?':
+                    untracked += 1
+
+        # Check stash
+        stashed = 0
+        stash_result = subprocess.run(
+            ["git", "-C", cwd, "stash", "list"],
+            capture_output=True,
+            text=True,
+            timeout=0.3,
+        )
+        if stash_result.returncode == 0:
+            stashed = len(stash_result.stdout.strip().splitlines()) if stash_result.stdout.strip() else 0
+
+        # Check ahead/behind
+        ahead = behind = 0
+        ab_result = subprocess.run(
+            ["git", "-C", cwd, "rev-list", "--left-right", "--count", "@{upstream}...HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=0.3,
+        )
+        if ab_result.returncode == 0:
+            parts = ab_result.stdout.strip().split()
+            if len(parts) == 2:
+                behind, ahead = int(parts[0]), int(parts[1])
+
+        return {
+            "staged": staged,
+            "modified": modified,
+            "deleted": deleted,
+            "renamed": renamed,
+            "untracked": untracked,
+            "stashed": stashed,
+            "ahead": ahead,
+            "behind": behind,
+            "conflicted": conflicted,
+        }
+    except Exception:
+        return None
 
 
 # =============================================================================
@@ -1303,6 +1379,45 @@ def _render_git_branch(ctx, opts):
     return f"   {BOLD}{text_color('git')}[{git_branch}]"
 
 
+def _render_git_status(ctx, opts):
+    cwd = ctx.get("cwd")
+    if not cwd:
+        return ""
+    status = get_git_status(cwd)
+    if not status:
+        return ""
+
+    parts = []
+    # Working directory state (symbols only, no counts)
+    if status["staged"]:
+        parts.append("+")
+    if status["modified"]:
+        parts.append("!")
+    if status["deleted"]:
+        parts.append("x")
+    if status["renamed"]:
+        parts.append("r")
+    if status["untracked"]:
+        parts.append("?")
+    if status["conflicted"]:
+        parts.append("=")
+    if status["stashed"]:
+        parts.append("$")
+
+    # Ahead/behind
+    if status["ahead"] and status["behind"]:
+        parts.append("<>")
+    elif status["ahead"]:
+        parts.append(">")
+    elif status["behind"]:
+        parts.append("<")
+
+    if not parts:
+        return ""
+
+    return f" {text_color('git')}{''.join(parts)}"
+
+
 def _render_usage_5hour(ctx, opts):
     return ctx.get("usage_5hour", "")
 
@@ -1362,6 +1477,7 @@ SEGMENT_RENDERERS = {
     "tokens": _render_tokens,
     "directory": _render_directory,
     "git_branch": _render_git_branch,
+    "git_status": _render_git_status,
     "usage_5hour": _render_usage_5hour,
     "usage_weekly": _render_usage_weekly,
     "usage_burndown": _render_usage_burndown,

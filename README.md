@@ -23,6 +23,7 @@ A statusline script for [Claude Code](https://docs.anthropic.com/en/docs/claude-
 - **Context window progress bar and token count with percentage**
 - **Working directory**
 - **Git branch** (hiding main/master as an option)
+- **Git status** indicators (staged, modified, untracked, stash, ahead/behind)
 - **Usage** tracking both 5-hour and 7-day window showing what needs to be known (how much, to when and how much you're burning through them)
 - **Dark and light theme** support (Nord-inspired palette) with option to customize.
 - **Truecolor (24-bit)** with automatic 256-color fallback
@@ -99,7 +100,7 @@ SL_SEGMENTS="model progress_bar:width=20 percentage tokens directory git_branch 
 
 Each token is `segment_name` optionally followed by `:key=value` pairs. Unknown segment names are silently ignored.
 
-**Default:** `update model context_na_message progress_bar percentage tokens directory git_branch usage_5hour usage_weekly`
+**Default:** `update model context_na_message progress_bar percentage tokens directory git_branch git_status usage_5hour usage_weekly`
 
 | Segment | Description |
 |---|---|
@@ -111,6 +112,7 @@ Each token is `segment_name` optionally followed by `:key=value` pairs. Unknown 
 | `tokens` | Token count (e.g. `84k/200k`) |
 | `directory` | Working directory path |
 | `git_branch` | Git branch indicator |
+| `git_status` | Git status: `+` staged, `!` modified, `x` deleted, `r` renamed, `?` untracked, `=` conflicted, `$` stashed, `>` ahead, `<` behind, `<>` diverged |
 | `usage_5hour` | 5-hour session usage gauge |
 | `usage_weekly` | 7-day weekly usage gauge |
 | `usage_burndown` | Shows how much sooner weekly budget will run out (not in defaults) |

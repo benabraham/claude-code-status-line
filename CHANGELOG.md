@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [4.4.0] - 2026-02-05
+
+### Added
+- `git_status` segment showing working directory state with starship-inspired symbols:
+  `+` staged, `!` modified, `x` deleted, `r` renamed, `?` untracked, `=` conflicted, `$` stashed, `>` ahead, `<` behind, `<>` diverged
+
 ## [4.3.0] - 2026-02-03
 
 ### Added
