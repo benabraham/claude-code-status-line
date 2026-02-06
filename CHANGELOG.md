@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [4.5.0] - 2026-02-06
+
+### Changed
+- Fallback display for `percentage` and `tokens` segments now defaults to off (was on)
+- Users who want transcript-vs-API comparison in red curly braces must opt in via `percentage:fallback=1` / `tokens:fallback=1`
+
 ## [4.4.0] - 2026-02-05
 
 ### Added

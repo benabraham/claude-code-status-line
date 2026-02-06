@@ -124,8 +124,8 @@ Each token is `segment_name` optionally followed by `:key=value` pairs. Unknown 
 |---|---|---|---|---|
 | `progress_bar` | `width` | integer | `12` | Bar width in characters |
 | `git_branch` | `hide_default` | `0`/`1` | `1` | Hide branch on `main`/`master` |
-| `percentage` | `fallback` | `0`/`1` | `1` | Show fallback comparison (see below) |
-| `tokens` | `fallback` | `0`/`1` | `1` | Show fallback comparison (see below) |
+| `percentage` | `fallback` | `0`/`1` | `0` | Show fallback comparison (see below) |
+| `tokens` | `fallback` | `0`/`1` | `0` | Show fallback comparison (see below) |
 | `usage_5hour` | `gauge` | `vertical`/`blocks`/`none` | `blocks` | Gauge style |
 | `usage_5hour` | `width` | even integer >= 2 | `4` | Gauge width (invalid values reset to 4) |
 | `usage_weekly` | `gauge` | `vertical`/`blocks`/`none` | `blocks` | Gauge style |
@@ -143,8 +143,8 @@ SL_SEGMENTS='git_branch model progress_bar percentage tokens directory'
 # Everything except usage gauges
 SL_SEGMENTS='model progress_bar percentage tokens directory git_branch'
 
-# Wide progress bar, no fallback info
-SL_SEGMENTS='model progress_bar:width=20 percentage:fallback=0 tokens:fallback=0 directory'
+# Wide progress bar, with fallback info enabled
+SL_SEGMENTS='model progress_bar:width=20 percentage:fallback=1 tokens:fallback=1 directory'
 
 # Different gauge styles per usage window
 SL_SEGMENTS='model progress_bar percentage usage_5hour:gauge=vertical usage_weekly:gauge=blocks:width=8'
