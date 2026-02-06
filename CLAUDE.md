@@ -63,5 +63,5 @@ Key sections in `claude-code-status-line.py` (~1,900 lines):
 - **Input validation**: OAuth token characters allowlisted before HTTP use. Git branch names stripped of ESC chars. Segment widths capped at 128. Hex colors length-checked. Usage ratio guarded against near-zero divisor.
 - **Credential sources**: macOS Keychain (`security` command) → `~/.claude/.credentials.json` fallback.
 - **Cache writes**: atomic via `tempfile.mkstemp()` + `os.replace()` with temp file cleanup on failure.
-- **Data source fallbacks**: API `used_percentage` is primary; transcript token parsing is fallback. Discrepancies >10% shown in red curly braces when `percentage:fallback=1` / `tokens:fallback=1`.
+- **Data source fallbacks**: API `used_percentage` is primary; transcript token parsing is fallback. Discrepancies >10% shown in red curly braces when opted in via `percentage:fallback=1` / `tokens:fallback=1` (default off).
 - **No type hints** per project convention — uses f-strings throughout.

@@ -77,8 +77,8 @@ VALID_SEGMENTS = frozenset(DEFAULT_SEGMENTS.split() + ["new_line", "usage_burndo
 SEGMENT_DEFAULTS = {
     "progress_bar": {"width": "12"},
     "git_branch": {"hide_default": "1"},
-    "percentage": {"fallback": "1"},
-    "tokens": {"fallback": "1"},
+    "percentage": {"fallback": "0"},
+    "tokens": {"fallback": "0"},
     "usage_5hour": {"gauge": "blocks", "width": "4"},
     "usage_weekly": {"gauge": "blocks", "width": "4"},
 }
