@@ -115,7 +115,7 @@ Each token is `segment_name` optionally followed by `:key=value` pairs. Unknown 
 | `git_status` | Git status: `+` staged, `!` modified, `x` deleted, `r` renamed, `?` untracked, `=` conflicted, `$` stashed, `>` ahead, `<` behind, `<>` diverged |
 | `usage_5hour` | 5-hour session usage gauge |
 | `usage_weekly` | 7-day weekly usage gauge |
-| `usage_burndown` | Shows how much sooner weekly budget will run out (not in defaults) |
+| `usage_burndown` | Burndown warning adapting to weekly window position (not in defaults) |
 | `new_line` | Insert line break for multi-line layouts (not in defaults) |
 
 #### Segment options
@@ -130,6 +130,7 @@ Each token is `segment_name` optionally followed by `:key=value` pairs. Unknown 
 | `usage_5hour` | `width` | even integer >= 2 | `4` | Gauge width (invalid values reset to 4) |
 | `usage_weekly` | `gauge` | `vertical`/`blocks`/`none` | `blocks` | Gauge style |
 | `usage_weekly` | `width` | even integer >= 2 | `4` | Gauge width (invalid values reset to 4) |
+| `usage_burndown` | `verbosity` | `default`/`short` | `default` | Message style (see burndown section) |
 
 #### Examples
 
@@ -313,7 +314,15 @@ Color thresholds: **≥ 1.33** light (well ahead) · **≥ 1.0** green (on track
 
 **5-hour safety override:** Regardless of ratio, the 5-hour gauge forces red when ≤ 5% budget remains, and orange when ≤ 10% remains. This catches cases where the ratio looks fine but you're about to hit the limit.
 
-**Burndown warning (`usage_burndown` segment):** When the weekly ratio drops below 1.0, the optional `usage_burndown` segment shows how much sooner you'll deplete your budget compared to the window reset time (e.g., "will run out 2 days 4 hours sooner"). Color-coded: orange in yellow zone (ratio ≥ 0.75), red in red zone (ratio < 0.75).
+**Burndown warning (`usage_burndown` segment):** When the weekly ratio drops below 1.0, the optional `usage_burndown` segment adapts its message to where you are in the weekly window. Three modes:
+
+| Mode | When | Default | Short (`verbosity=short`) |
+|------|------|---------|--------------------------|
+| Soon | < 1 h left | `may run out soon but renew 42 m away` | `out soon, renew 42m away` |
+| Pace | ≥ 48 h left | `may run out about 3 d sooner` | `out ~ 3d sooner` |
+| Countdown | < 48 h left | `about 8 h usage left then 1 d to renew` | `~ 8h left -> 1d to renew` |
+
+Countdown omits the renewal gap when it rounds to ≤ 1 hour. Color-coded: orange in yellow zone (ratio ≥ 0.75), red in red zone (ratio < 0.75). Short mode uses compact compound durations (e.g. `5d2h30m`).
 
 ### Truecolor Detection
 

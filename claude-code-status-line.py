@@ -1180,28 +1180,94 @@ def get_usage_gauge_blocks(ratio, gauge_width=4):
     return "".join(parts) + RESET
 
 
-def _format_burndown_early(seconds_early):
-    """Format how much earlier budget will deplete vs window reset."""
-    if seconds_early <= 0:
-        return ""  # On track or ahead, no warning needed
+def _format_duration(seconds):
+    """Round and format a duration for burndown display.
 
-    days = int(seconds_early // 86400)
-    hours = int((seconds_early % 86400) // 3600)
-    minutes = int((seconds_early % 3600) // 60)
+    Returns compact string with NBSP, or empty string for <30min.
+    """
+    if seconds < 1800:
+        return ""
+    if seconds >= 172800:  # >= 48h
+        days = round(seconds / 86400)
+        return f"{days}\u00a0d"
+    if seconds >= 86400:  # 24-48h
+        days = round(seconds / 86400, 1)
+        # Strip trailing .0
+        if days == int(days):
+            days = int(days)
+        return f"{days}\u00a0d"
+    # 2-24h or 1-2h that rounds to >= 1h
+    hours = round(seconds / 3600)
+    if hours >= 1:
+        return f"{hours}\u00a0h"
+    return ""
 
+
+def _format_duration_compact(seconds):
+    """Compact duration: no spaces, compound form like 5d2h30m.
+
+    Returns empty string for <30min.
+    """
+    if seconds < 1800:
+        return ""
+    total_minutes = round(seconds / 60)
+    days = total_minutes // 1440
+    hours = (total_minutes % 1440) // 60
+    minutes = total_minutes % 60
     parts = []
-    if days > 0:
-        parts.append(f"{days} day{'s' if days != 1 else ''}")
-    if hours > 0:
-        parts.append(f"{hours} hour{'s' if hours != 1 else ''}")
-    # Only show minutes when days is 0
-    if days == 0 and minutes > 0:
-        parts.append(f"{minutes} minute{'s' if minutes != 1 else ''}")
+    if days:
+        parts.append(f"{days}d")
+    if hours:
+        parts.append(f"{hours}h")
+    if minutes:
+        parts.append(f"{minutes}m")
+    return "".join(parts)
 
-    if not parts:
-        return "will run out now"
 
-    return "will run out " + " ".join(parts) + " sooner"
+def _format_burndown(seconds_to_depletion, seconds_early, seconds_until_reset,
+                     verbosity="default"):
+    """Format burndown message adapting to where user is in the weekly window.
+
+    Three modes (default verbosity):
+    - Soon: depletion < 1h — "may run out soon but renew X m away"
+    - Pace: depletion >= 48h — "may run out about X sooner"
+    - Countdown: depletion < 48h — "about X usage left then Y to renew"
+
+    Short verbosity uses compact durations (5d2h), ~ instead of about,
+    -> instead of then, drops "usage", "out ~" instead of "may run out about".
+    """
+    NB = "\u00a0"
+    short = verbosity == "short"
+    dur = _format_duration_compact if short else _format_duration
+
+    if seconds_to_depletion < 3600:
+        # Soon mode
+        renew_minutes = int(seconds_until_reset / 60)
+        if short:
+            return f"out{NB}soon,{NB}renew{NB}{renew_minutes}m{NB}away"
+        return f"may{NB}run{NB}out{NB}soon{NB}but{NB}renew{NB}{renew_minutes}{NB}m{NB}away"
+
+    if seconds_to_depletion >= 172800:
+        # Pace mode
+        early = dur(seconds_early)
+        if not early:
+            return ""
+        if short:
+            return f"out{NB}~{NB}{early}{NB}sooner"
+        return f"may{NB}run{NB}out{NB}about{NB}{early}{NB}sooner"
+
+    # Countdown mode — omit renewal gap when early <= 1h
+    depletion = dur(seconds_to_depletion)
+    if not depletion:
+        return ""
+    early = dur(seconds_early) if seconds_early > 3600 else ""
+    if short:
+        if early:
+            return f"~{NB}{depletion}{NB}left{NB}->{NB}{early}{NB}to{NB}renew"
+        return f"~{NB}{depletion}{NB}left"
+    if early:
+        return f"about{NB}{depletion}{NB}usage{NB}left{NB}then{NB}{early}{NB}to{NB}renew"
+    return f"about{NB}{depletion}{NB}usage{NB}left"
 
 
 def format_usage_indicators(usage_data):
@@ -1288,7 +1354,14 @@ def format_usage_indicators(usage_data):
                 # How much earlier will we run out?
                 seconds_early = seconds_until_reset - seconds_to_depletion
                 if seconds_early > 0:
-                    results["weekly_burndown"] = _format_burndown_early(seconds_early)
+                    burndown_opts = _segment_opts("usage_burndown")
+                    verbosity = burndown_opts.get("verbosity", "default")
+                    burndown_text = _format_burndown(
+                        seconds_to_depletion, seconds_early, seconds_until_reset,
+                        verbosity=verbosity,
+                    )
+                    if burndown_text:
+                        results["weekly_burndown"] = burndown_text
                     theme = THEMES[THEME]
                     # Orange in yellow zone, red in red zone
                     color_key = "usage_yellow" if ratio >= 0.75 else "usage_red"

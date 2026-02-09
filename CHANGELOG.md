@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [4.6.0] - 2026-02-09
+
+### Changed
+- Burndown display now adapts to position in weekly window with three modes:
+  Soon (< 1 h left), Pace (≥ 48 h left), Countdown (< 48 h left)
+- Durations rounded for stability (e.g. `3 d`, `8 h` instead of `2 days 4 hours`)
+- New `verbosity` option: `usage_burndown:verbosity=short` for compact output
+  (`out ~ 3d sooner`, `~ 8h left -> 1d to renew`, compound durations like `5d2h30m`)
+
 ## [4.5.0] - 2026-02-06
 
 ### Changed
