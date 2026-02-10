@@ -81,6 +81,7 @@ SEGMENT_DEFAULTS = {
     "tokens": {"fallback": "0"},
     "usage_5hour": {"gauge": "blocks", "width": "4"},
     "usage_weekly": {"gauge": "blocks", "width": "4"},
+    "usage_burndown": {"coeff": "1.4"},
 }
 
 
@@ -1354,19 +1355,29 @@ def format_usage_indicators(usage_data):
                 # How much earlier will we run out?
                 seconds_early = seconds_until_reset - seconds_to_depletion
                 if seconds_early > 0:
+                    # Non-linear relevance filter: require larger "sooner" gap
+                    # early in the window when prediction confidence is low.
+                    # Power curve: days_remaining^coeff hours minimum.
                     burndown_opts = _segment_opts("usage_burndown")
-                    verbosity = burndown_opts.get("verbosity", "default")
-                    burndown_text = _format_burndown(
-                        seconds_to_depletion, seconds_early, seconds_until_reset,
-                        verbosity=verbosity,
-                    )
-                    if burndown_text:
-                        results["weekly_burndown"] = burndown_text
-                    theme = THEMES[THEME]
-                    # Orange in yellow zone, red in red zone
-                    color_key = "usage_yellow" if ratio >= 0.75 else "usage_red"
-                    rgb, fallback = theme[color_key]
-                    results["weekly_burndown_color"] = _color(rgb, fallback, is_bg=False)
+                    try:
+                        coeff = float(burndown_opts.get("coeff", "1.4"))
+                    except (ValueError, TypeError):
+                        coeff = 1.4
+                    days_left = seconds_until_reset / 86400
+                    min_sooner = (days_left ** coeff) * 3600
+                    if seconds_early >= min_sooner:
+                        verbosity = burndown_opts.get("verbosity", "default")
+                        burndown_text = _format_burndown(
+                            seconds_to_depletion, seconds_early, seconds_until_reset,
+                            verbosity=verbosity,
+                        )
+                        if burndown_text:
+                            results["weekly_burndown"] = burndown_text
+                        theme = THEMES[THEME]
+                        # Orange in yellow zone, red in red zone
+                        color_key = "usage_yellow" if ratio >= 0.75 else "usage_red"
+                        rgb, fallback = theme[color_key]
+                        results["weekly_burndown_color"] = _color(rgb, fallback, is_bg=False)
 
         gauge_style = opts.get("gauge", "blocks")
         gauge_width = int(opts.get("width", "4"))
