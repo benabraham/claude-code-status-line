@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [4.7.0] - 2026-02-10
+
+### Added
+- Non-linear relevance filter for burndown predictions — suppresses noisy warnings
+  early in the weekly window when prediction confidence is low
+- New `coeff` option for `usage_burndown` segment (`usage_burndown:coeff=1.4`) to
+  tune the power curve exponent controlling minimum "sooner" gap
+
 ## [4.6.0] - 2026-02-09
 
 ### Changed

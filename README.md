@@ -131,6 +131,7 @@ Each token is `segment_name` optionally followed by `:key=value` pairs. Unknown 
 | `usage_weekly` | `gauge` | `vertical`/`blocks`/`none` | `blocks` | Gauge style |
 | `usage_weekly` | `width` | even integer >= 2 | `4` | Gauge width (invalid values reset to 4) |
 | `usage_burndown` | `verbosity` | `default`/`short` | `default` | Message style (see burndown section) |
+| `usage_burndown` | `coeff` | float | `1.4` | Relevance filter power curve exponent (see burndown section) |
 
 #### Examples
 
@@ -323,6 +324,8 @@ Color thresholds: **≥ 1.33** light (well ahead) · **≥ 1.0** green (on track
 | Countdown | < 48 h left | `about 8 h usage left then 1 d to renew` | `~ 8h left -> 1d to renew` |
 
 Countdown omits the renewal gap when it rounds to ≤ 1 hour. Color-coded: orange in yellow zone (ratio ≥ 0.75), red in red zone (ratio < 0.75). Short mode uses compact compound durations (e.g. `5d2h30m`).
+
+**Relevance filter:** Early in the weekly window, burn rate predictions are based on little data and small "sooner" gaps are noise. The burndown is suppressed unless the predicted gap exceeds a dynamic minimum: `days_remaining^coeff` hours. With the default `coeff=1.4`, at 6.5 days left the gap must be ≥ ~13 h to show; at 1 day left, ≥ ~1 h. Lower values make it less aggressive, higher values more. Configure: `usage_burndown:coeff=1.2`.
 
 ### Truecolor Detection
 
