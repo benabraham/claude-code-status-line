@@ -76,6 +76,7 @@ VALID_SEGMENTS = frozenset(DEFAULT_SEGMENTS.split() + ["new_line", "usage_burndo
 
 SEGMENT_DEFAULTS = {
     "progress_bar": {"width": "12"},
+    "directory": {"basename_only": "0"},
     "git_branch": {"hide_default": "1"},
     "percentage": {"fallback": "0"},
     "tokens": {"fallback": "0"},
@@ -1443,11 +1444,14 @@ def _render_directory(ctx, opts):
     cwd = ctx.get("cwd")
     if not cwd:
         return ""
-    home = os.path.expanduser("~")
-    if cwd.startswith(home):
-        cwd_short = "~" + cwd[len(home) :]
+    if opts.get("basename_only") == "1":
+        cwd_short = os.path.basename(cwd) or cwd
     else:
-        cwd_short = cwd
+        home = os.path.expanduser("~")
+        if cwd.startswith(home):
+            cwd_short = "~" + cwd[len(home) :]
+        else:
+            cwd_short = cwd
     return f"   {text_color('cwd')}{cwd_short}"
 
 
