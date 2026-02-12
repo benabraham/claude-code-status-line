@@ -123,6 +123,7 @@ Each token is `segment_name` optionally followed by `:key=value` pairs. Unknown 
 | Segment | Option | Values | Default | Description |
 |---|---|---|---|---|
 | `progress_bar` | `width` | integer | `12` | Bar width in characters |
+| `directory` | `basename_only` | `0`/`1` | `0` | Show only the directory name instead of the full path |
 | `git_branch` | `hide_default` | `0`/`1` | `1` | Hide branch on `main`/`master` |
 | `percentage` | `fallback` | `0`/`1` | `0` | Show fallback comparison (see below) |
 | `tokens` | `fallback` | `0`/`1` | `0` | Show fallback comparison (see below) |
@@ -150,6 +151,9 @@ SL_SEGMENTS='model progress_bar:width=20 percentage:fallback=1 tokens:fallback=1
 
 # Different gauge styles per usage window
 SL_SEGMENTS='model progress_bar percentage usage_5hour:gauge=vertical usage_weekly:gauge=blocks:width=8'
+
+# Show only directory name (e.g. "my-project" instead of "~/code/my-project")
+SL_SEGMENTS='model progress_bar percentage tokens directory:basename_only=1 git_branch'
 
 # Show git branch even on main/master
 SL_SEGMENTS='model progress_bar percentage tokens directory git_branch:hide_default=0'
