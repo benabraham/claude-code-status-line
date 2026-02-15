@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [4.8.0] - 2026-02-15
+
+### Added
+- New `basename_only` option for `directory` segment (`directory:basename_only=1`) —
+  shows only the directory name instead of the full path, useful for deeply nested paths
+
 ## [4.7.0] - 2026-02-10
 
 ### Added
