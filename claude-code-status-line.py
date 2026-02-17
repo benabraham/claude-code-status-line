@@ -1347,10 +1347,24 @@ def format_usage_indicators(usage_data):
 
         # Calculate burndown for yellow/red zone (ratio < 1.0)
         if api_key == "seven_day" and ratio < 1.0 and elapsed_seconds > 0 and utilization_pct > 0:
-            burn_rate = utilization_pct / elapsed_seconds
+            # Bayesian shrinkage: blend observed rate toward on-track rate.
+            # Hyperbolic trust curve: f = elapsed / (k + elapsed)
+            # k = half-trust point — at k elapsed, 50/50 blend.
+            burndown_opts = _segment_opts("usage_burndown")
+            try:
+                halftrust_h = float(burndown_opts.get("halftrust", "16"))
+            except (ValueError, TypeError):
+                halftrust_h = 16
+            k = halftrust_h * 3600
+            f = elapsed_seconds / (k + elapsed_seconds)
+
+            observed_rate = utilization_pct / elapsed_seconds
+            on_track_rate = 100 / window_seconds
+            effective_rate = observed_rate * f + on_track_rate * (1 - f)
+
             remaining_budget = 100 - utilization_pct
-            if burn_rate > 0:
-                seconds_to_depletion = remaining_budget / burn_rate
+            if effective_rate > on_track_rate:
+                seconds_to_depletion = remaining_budget / effective_rate
                 # Time until window resets
                 seconds_until_reset = reset_dt.timestamp() - now.timestamp()
                 # How much earlier will we run out?
@@ -1359,7 +1373,6 @@ def format_usage_indicators(usage_data):
                     # Non-linear relevance filter: require larger "sooner" gap
                     # early in the window when prediction confidence is low.
                     # Power curve: days_remaining^coeff hours minimum.
-                    burndown_opts = _segment_opts("usage_burndown")
                     try:
                         coeff = float(burndown_opts.get("coeff", "1.4"))
                     except (ValueError, TypeError):
