@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [4.9.0] - 2026-02-17
+
+### Added
+- Bayesian burn rate shrinkage for burndown prognosis — blends observed burn rate
+  toward on-track rate using a hyperbolic trust curve, dampening misleading warnings
+  early in the weekly window (e.g. "may run out 1.9 d sooner" at 2% usage, 2.5h in)
+- New `halftrust` option for `usage_burndown` segment (`usage_burndown:halftrust=16`)
+  to configure the half-trust point in hours (default 16h)
+
 ## [4.8.0] - 2026-02-15
 
 ### Added

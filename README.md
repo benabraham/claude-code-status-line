@@ -133,6 +133,7 @@ Each token is `segment_name` optionally followed by `:key=value` pairs. Unknown 
 | `usage_weekly` | `width` | even integer >= 2 | `4` | Gauge width (invalid values reset to 4) |
 | `usage_burndown` | `verbosity` | `default`/`short` | `default` | Message style (see burndown section) |
 | `usage_burndown` | `coeff` | float | `1.4` | Relevance filter power curve exponent (see burndown section) |
+| `usage_burndown` | `halftrust` | float (hours) | `16` | Bayesian shrinkage half-trust point (see burndown section) |
 
 #### Examples
 
@@ -329,7 +330,9 @@ Color thresholds: **≥ 1.33** light (well ahead) · **≥ 1.0** green (on track
 
 Countdown omits the renewal gap when it rounds to ≤ 1 hour. Color-coded: orange in yellow zone (ratio ≥ 0.75), red in red zone (ratio < 0.75). Short mode uses compact compound durations (e.g. `5d2h30m`).
 
-**Relevance filter:** Early in the weekly window, burn rate predictions are based on little data and small "sooner" gaps are noise. The burndown is suppressed unless the predicted gap exceeds a dynamic minimum: `days_remaining^coeff` hours. With the default `coeff=1.4`, at 6.5 days left the gap must be ≥ ~13 h to show; at 1 day left, ≥ ~1 h. Lower values make it less aggressive, higher values more. Configure: `usage_burndown:coeff=1.2`.
+**Bayesian shrinkage:** The raw burn rate is noisy early in the weekly window — a small sample gets extrapolated over days. To counter this, the observed burn rate is blended toward the "on-track" rate (100%/168h) using a hyperbolic trust curve: `f = elapsed / (halftrust + elapsed)`. At the half-trust point (default 16h), the blend is 50/50. Early on, the estimate is mostly on-track; as data accumulates, the observation dominates. If the blended rate is at or below on-track, no burndown warning is shown. Configure: `usage_burndown:halftrust=24`.
+
+**Relevance filter:** On top of shrinkage, the burndown is suppressed unless the predicted "sooner" gap exceeds a dynamic minimum: `days_remaining^coeff` hours. With the default `coeff=1.4`, at 6.5 days left the gap must be ≥ ~13 h to show; at 1 day left, ≥ ~1 h. Lower values make it less aggressive, higher values more. Configure: `usage_burndown:coeff=1.2`.
 
 ### Truecolor Detection
 
