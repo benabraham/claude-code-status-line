@@ -70,13 +70,14 @@ THEME_FILE = _env_str(
 # --- Segment system ---
 
 DEFAULT_SEGMENTS = (
-    "update model context_na_message progress_bar percentage tokens directory git_branch git_status usage_5hour usage_weekly"
+    "update model context_na_message progress_bar percentage tokens directory added_dirs git_branch git_status usage_5hour usage_weekly"
 )
 VALID_SEGMENTS = frozenset(DEFAULT_SEGMENTS.split() + ["new_line", "usage_burndown"])
 
 SEGMENT_DEFAULTS = {
     "progress_bar": {"width": "12"},
     "directory": {"basename_only": "0"},
+    "added_dirs": {"basename_only": "0", "separator": " • "},
     "git_branch": {"hide_default": "1"},
     "percentage": {"fallback": "0"},
     "tokens": {"fallback": "0"},
@@ -193,6 +194,7 @@ THEMES = {
         "text_cwd": (("#81A1C1", None), 110),  # nord9
         "text_git": (("#B48EAD", None), 139),  # nord15 purple
         "text_na": (("#D08770", None), 173),  # nord12 orange
+        "text_added_dirs": (("#4C566A", None), 60),  # nord3 muted gray
         # Usage indicator colors (ratio-based)
         "usage_light": ("#88C0D0", 110),  # nord8 frost - well ahead
         "usage_green": ("#A3BE8C", 108),  # nord14 - on track
@@ -230,6 +232,7 @@ THEMES = {
         "text_cwd": (("#3C465A", None), 238),  # dark slate
         "text_git": (("#508C50", None), 65),  # muted green
         "text_na": (("#D08770", None), 173),  # nord12 orange
+        "text_added_dirs": (("#7B8394", None), 103),  # medium gray
         # Usage indicator colors (ratio-based) - darker for light bg
         "usage_light": ("#2B7A78", 30),  # dark teal - well ahead
         "usage_green": ("#4A7C4A", 65),  # dark green - on track
@@ -330,7 +333,7 @@ def _load_custom_theme():
             overrides[key] = (h, hex_to_256(h))
 
     # Text colors: "hex" → (("hex", None), 256)
-    for key in ("text_percent", "text_numbers", "text_cwd", "text_git", "text_na"):
+    for key in ("text_percent", "text_numbers", "text_cwd", "text_git", "text_na", "text_added_dirs"):
         if key in ns:
             h = ns[key]
             if not _is_hex(h):
@@ -1468,6 +1471,25 @@ def _render_directory(ctx, opts):
     return f"   {text_color('cwd')}{cwd_short}"
 
 
+def _render_added_dirs(ctx, opts):
+    added_dirs = ctx.get("added_dirs", [])
+    if not added_dirs:
+        return ""
+    home = os.path.expanduser("~")
+    basename_only = opts.get("basename_only") == "1"
+    shortened = []
+    for d in sorted(added_dirs):
+        if basename_only:
+            shortened.append(os.path.basename(d) or d)
+        elif d.startswith(home):
+            shortened.append("~" + d[len(home):])
+        else:
+            shortened.append(d)
+    separator = opts.get("separator", " • ")
+    joined = separator.join(shortened)
+    return f"   {text_color('added_dirs')}{joined}"
+
+
 def _render_git_branch(ctx, opts):
     cwd = ctx.get("cwd")
     if not cwd:
@@ -1577,6 +1599,7 @@ SEGMENT_RENDERERS = {
     "percentage": _render_percentage,
     "tokens": _render_tokens,
     "directory": _render_directory,
+    "added_dirs": _render_added_dirs,
     "git_branch": _render_git_branch,
     "git_status": _render_git_status,
     "usage_5hour": _render_usage_5hour,
@@ -1623,6 +1646,7 @@ def build_progress_bar(
     usage_weekly_burndown="",
     usage_weekly_burndown_color="",
     update_info=None,
+    added_dirs=None,
 ):
     """Build the full status line string"""
     bar_width = max(1, min(128, int(_segment_opts("progress_bar").get("width", "12"))))
@@ -1713,6 +1737,7 @@ def build_progress_bar(
         "usage_weekly_burndown": usage_weekly_burndown,
         "usage_weekly_burndown_color": usage_weekly_burndown_color,
         "update_info": update_info,
+        "added_dirs": added_dirs or [],
     }
 
     parts = []
@@ -1727,12 +1752,13 @@ def build_progress_bar(
     return _join_parts(parts)
 
 
-def build_na_line(model, cwd):
+def build_na_line(model, cwd, added_dirs=None):
     """Build status line when no usage data available"""
     ctx = {
         "model": model,
         "model_color": get_model_colors(model),
         "cwd": cwd,
+        "added_dirs": added_dirs or [],
         "na_mode": True,  # Signals not_available_message to render
     }
 
@@ -2190,6 +2216,7 @@ def main():
 
     model = data.get("model", {}).get("display_name", "Claude")
     cwd = data.get("cwd", "")
+    added_dirs = data.get("workspace", {}).get("added_dirs", [])
 
     # Get context window info
     context_window = data.get("context_window", {})
@@ -2220,7 +2247,7 @@ def main():
     elif calc_pct is not None:
         pct = calc_pct
     else:
-        print(build_na_line(model, cwd))
+        print(build_na_line(model, cwd, added_dirs=added_dirs))
         return
 
     # Get transcript tokens for comparison
@@ -2248,6 +2275,7 @@ def main():
             usage_weekly_burndown=usage_parts.get("weekly_burndown", ""),
             usage_weekly_burndown_color=usage_parts.get("weekly_burndown_color", ""),
             update_info=update_info,
+            added_dirs=added_dirs,
         )
     )
 
