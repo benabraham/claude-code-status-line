@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [4.10.0] - 2026-02-19
+
+### Added
+- New `added_dirs` segment showing directories added via `/add-dir` command, sorted
+  alphabetically with muted gray styling. Supports `basename_only` and `separator`
+  options (default separator: ` • `). Included in default segments after `directory`.
+
 ## [4.9.0] - 2026-02-17
 
 ### Added

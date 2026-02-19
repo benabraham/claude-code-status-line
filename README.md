@@ -100,7 +100,7 @@ SL_SEGMENTS="model progress_bar:width=20 percentage tokens directory git_branch 
 
 Each token is `segment_name` optionally followed by `:key=value` pairs. Unknown segment names are silently ignored.
 
-**Default:** `update model context_na_message progress_bar percentage tokens directory git_branch git_status usage_5hour usage_weekly`
+**Default:** `update model context_na_message progress_bar percentage tokens directory added_dirs git_branch git_status usage_5hour usage_weekly`
 
 | Segment | Description |
 |---|---|
@@ -111,6 +111,7 @@ Each token is `segment_name` optionally followed by `:key=value` pairs. Unknown 
 | `percentage` | Context usage percentage |
 | `tokens` | Token count (e.g. `84k/200k`) |
 | `directory` | Working directory path |
+| `added_dirs` | Directories added via `/add-dir`, sorted alphabetically |
 | `git_branch` | Git branch indicator |
 | `git_status` | Git status: `+` staged, `!` modified, `x` deleted, `r` renamed, `?` untracked, `=` conflicted, `$` stashed, `>` ahead, `<` behind, `<>` diverged |
 | `usage_5hour` | 5-hour session usage gauge |
@@ -124,6 +125,8 @@ Each token is `segment_name` optionally followed by `:key=value` pairs. Unknown 
 |---|---|---|---|---|
 | `progress_bar` | `width` | integer | `12` | Bar width in characters |
 | `directory` | `basename_only` | `0`/`1` | `0` | Show only the directory name instead of the full path |
+| `added_dirs` | `basename_only` | `0`/`1` | `0` | Show only directory names instead of full paths |
+| `added_dirs` | `separator` | string | ` • ` | Separator between directory paths |
 | `git_branch` | `hide_default` | `0`/`1` | `1` | Hide branch on `main`/`master` |
 | `percentage` | `fallback` | `0`/`1` | `0` | Show fallback comparison (see below) |
 | `tokens` | `fallback` | `0`/`1` | `0` | Show fallback comparison (see below) |
@@ -255,6 +258,7 @@ gradient = [
 | `text_cwd` | `"#hex"` | Working directory text |
 | `text_git` | `"#hex"` | Git branch text |
 | `text_na` | `"#hex"` | N/A indicator text |
+| `text_added_dirs` | `"#hex"` | Added directories text |
 | `usage_light` | `"#hex"` | Usage gauge: well ahead |
 | `usage_green` | `"#hex"` | Usage gauge: on track |
 | `usage_yellow` | `"#hex"` | Usage gauge: faster than sustainable |
