@@ -81,8 +81,8 @@ SEGMENT_DEFAULTS = {
     "git_branch": {"hide_default": "1"},
     "percentage": {"fallback": "0"},
     "tokens": {"fallback": "0"},
-    "usage_5hour": {"gauge": "blocks", "width": "4"},
-    "usage_weekly": {"gauge": "blocks", "width": "4"},
+    "usage_5hour": {"gauge": "blocks", "width": "4", "invert": "0"},
+    "usage_weekly": {"gauge": "blocks", "width": "4", "invert": "0"},
     "usage_burndown": {"coeff": "1.4"},
 }
 
@@ -1320,6 +1320,11 @@ def format_usage_indicators(usage_data):
             continue
 
         now = datetime.now(timezone.utc)
+        invert = opts.get("invert") == "1"
+        if invert:
+            display_pct = min(100, int(utilization_pct))
+        else:
+            display_pct = max(0, int(100 - utilization_pct))
         remaining_pct = max(0, int(100 - utilization_pct))
         reset_label = reset_dt.astimezone().strftime(time_fmt)
 
@@ -1406,7 +1411,7 @@ def format_usage_indicators(usage_data):
             gauge = get_usage_gauge(ratio)
         gauge_part = f"{gauge}\u00a0" if gauge else ""
         results[segment_name] = (
-            f"   {gauge_part}{color}{remaining_pct}\u00a0%\u00a0→\u00a0{reset_label}"
+            f"   {gauge_part}{color}{display_pct}\u00a0%\u00a0→\u00a0{reset_label}"
         )
 
     for seg in ("usage_5hour", "usage_weekly"):

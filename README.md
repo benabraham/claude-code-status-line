@@ -132,8 +132,10 @@ Each token is `segment_name` optionally followed by `:key=value` pairs. Unknown 
 | `tokens` | `fallback` | `0`/`1` | `0` | Show fallback comparison (see below) |
 | `usage_5hour` | `gauge` | `vertical`/`blocks`/`none` | `blocks` | Gauge style |
 | `usage_5hour` | `width` | even integer >= 2 | `4` | Gauge width (invalid values reset to 4) |
+| `usage_5hour` | `invert` | `0`/`1` | `0` | Show used % instead of remaining % |
 | `usage_weekly` | `gauge` | `vertical`/`blocks`/`none` | `blocks` | Gauge style |
 | `usage_weekly` | `width` | even integer >= 2 | `4` | Gauge width (invalid values reset to 4) |
+| `usage_weekly` | `invert` | `0`/`1` | `0` | Show used % instead of remaining % |
 | `usage_burndown` | `verbosity` | `default`/`short` | `default` | Message style (see burndown section) |
 | `usage_burndown` | `coeff` | float | `1.4` | Relevance filter power curve exponent (see burndown section) |
 | `usage_burndown` | `halftrust` | float (hours) | `16` | Bayesian shrinkage half-trust point (see burndown section) |
@@ -161,6 +163,9 @@ SL_SEGMENTS='model progress_bar percentage tokens directory:basename_only=1 git_
 
 # Show git branch even on main/master
 SL_SEGMENTS='model progress_bar percentage tokens directory git_branch:hide_default=0'
+
+# Show used % instead of remaining % for usage limits
+SL_SEGMENTS='model progress_bar percentage tokens directory usage_5hour:invert=1 usage_weekly:invert=1'
 
 # Multi-line layout: model and progress on first line, directory on second
 SL_SEGMENTS='model progress_bar percentage new_line directory git_branch'
