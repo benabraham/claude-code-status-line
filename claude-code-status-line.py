@@ -75,6 +75,7 @@ DEFAULT_SEGMENTS = (
 VALID_SEGMENTS = frozenset(DEFAULT_SEGMENTS.split() + ["new_line", "usage_burndown"])
 
 SEGMENT_DEFAULTS = {
+    "model": {"effort": "full"},
     "progress_bar": {"width": "12"},
     "directory": {"basename_only": "0"},
     "added_dirs": {"basename_only": "0", "separator": " • "},
@@ -464,6 +465,23 @@ def text_color(key):
     theme = THEMES[THEME]
     color_tuple = theme[f"text_{key}"]
     return fg_themed(color_tuple)
+
+
+def get_effort_level():
+    """Get reasoning effort level from env var or settings.json, default 'high'"""
+    env_val = os.environ.get("CLAUDE_CODE_EFFORT_LEVEL", "")
+    if env_val:
+        return env_val.lower()
+    settings_path = os.path.expanduser("~/.claude/settings.json")
+    try:
+        with open(settings_path) as f:
+            data = json.load(f)
+        val = data.get("effortLevel", "")
+        if val:
+            return val.lower()
+    except (OSError, json.JSONDecodeError, KeyError):
+        pass
+    return "high"
 
 
 # =============================================================================
@@ -1428,7 +1446,15 @@ def format_usage_indicators(usage_data):
 
 
 def _render_model(ctx, opts):
-    return ctx["model_color"] + center_text(ctx["model"]) + RESET
+    label = ctx["model"]
+    effort = opts.get("effort", "")
+    if effort in ("short", "full"):
+        level = ctx.get("effort_level", "high")
+        if effort == "short":
+            label = f"{label} {level[0].upper()}"
+        else:
+            label = f"{label} {level}"
+    return ctx["model_color"] + center_text(label) + RESET
 
 
 def _render_progress_bar(ctx, opts):
@@ -1722,6 +1748,7 @@ def build_progress_bar(
     ctx = {
         "model": model,
         "model_color": model_color,
+        "effort_level": get_effort_level(),
         "fill_fg": fill_fg,
         "filled": filled,
         "transition": transition,
@@ -1757,6 +1784,7 @@ def build_na_line(model, cwd, added_dirs=None):
     ctx = {
         "model": model,
         "model_color": get_model_colors(model),
+        "effort_level": get_effort_level(),
         "cwd": cwd,
         "added_dirs": added_dirs or [],
         "na_mode": True,  # Signals not_available_message to render
