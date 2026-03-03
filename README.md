@@ -105,7 +105,7 @@ Each token is `segment_name` optionally followed by `:key=value` pairs. Unknown 
 | Segment | Description |
 |---|---|
 | `update` | Shows when a new Claude Code version is available |
-| `model` | Model badge (Opus/Sonnet/Haiku) |
+| `model` | Model badge (Opus/Sonnet/Haiku) with optional reasoning effort level |
 | `context_na_message` | Shows "context size N/A" when session data unavailable |
 | `progress_bar` | Context window progress bar |
 | `percentage` | Context usage percentage |
@@ -123,6 +123,7 @@ Each token is `segment_name` optionally followed by `:key=value` pairs. Unknown 
 
 | Segment | Option | Values | Default | Description |
 |---|---|---|---|---|
+| `model` | `effort` | `full`/`short`/(empty) | `full` | Show reasoning effort: full word, single letter, or hidden |
 | `progress_bar` | `width` | integer | `12` | Bar width in characters |
 | `directory` | `basename_only` | `0`/`1` | `0` | Show only the directory name instead of the full path |
 | `added_dirs` | `basename_only` | `0`/`1` | `0` | Show only directory names instead of full paths |
@@ -161,6 +162,12 @@ SL_SEGMENTS='model progress_bar percentage tokens directory:basename_only=1 git_
 
 # Show git branch even on main/master
 SL_SEGMENTS='model progress_bar percentage tokens directory git_branch:hide_default=0'
+
+# Show reasoning effort as single letter (H/M/L) in model badge
+SL_SEGMENTS='model:effort=short progress_bar percentage tokens directory'
+
+# Hide reasoning effort from model badge
+SL_SEGMENTS='model:effort= progress_bar percentage tokens directory'
 
 # Multi-line layout: model and progress on first line, directory on second
 SL_SEGMENTS='model progress_bar percentage new_line directory git_branch'
