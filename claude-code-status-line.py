@@ -70,7 +70,7 @@ THEME_FILE = _env_str(
 # --- Segment system ---
 
 DEFAULT_SEGMENTS = (
-    "update model context_na_message progress_bar percentage tokens directory added_dirs git_branch git_status usage_5hour usage_weekly"
+    "update model progress_bar percentage tokens directory added_dirs git_branch git_status usage_5hour usage_weekly"
 )
 VALID_SEGMENTS = frozenset(DEFAULT_SEGMENTS.split() + ["new_line", "usage_burndown"])
 
@@ -80,8 +80,6 @@ SEGMENT_DEFAULTS = {
     "directory": {"basename_only": "0"},
     "added_dirs": {"basename_only": "0", "separator": " • "},
     "git_branch": {"hide_default": "1"},
-    "percentage": {"fallback": "0"},
-    "tokens": {"fallback": "0"},
     "usage_5hour": {"gauge": "blocks", "width": "4"},
     "usage_weekly": {"gauge": "blocks", "width": "4"},
     "usage_burndown": {"coeff": "1.4"},
@@ -592,48 +590,6 @@ def get_git_status(cwd):
     except Exception:
         return None
 
-
-# =============================================================================
-# TRANSCRIPT PARSING (for comparison with API - remove when bug #13783 is fixed)
-# =============================================================================
-
-
-def get_tokens_from_transcript(transcript_path):
-    """Parse JSONL transcript for accurate context tokens."""
-    if not transcript_path or not os.path.exists(transcript_path):
-        return None
-
-    latest_usage = None
-    latest_timestamp = None
-    total_output_tokens = 0
-
-    try:
-        with open(transcript_path, "r") as f:
-            for line in f:
-                try:
-                    entry = json.loads(line)
-                    if entry.get("isSidechain") or entry.get("isApiErrorMessage"):
-                        continue
-                    usage = entry.get("message", {}).get("usage")
-                    timestamp = entry.get("timestamp")
-                    if usage and timestamp:
-                        total_output_tokens += usage.get("output_tokens", 0)
-                        if latest_timestamp is None or timestamp > latest_timestamp:
-                            latest_timestamp = timestamp
-                            latest_usage = usage
-                except json.JSONDecodeError:
-                    continue
-    except (IOError, OSError):
-        return None
-
-    if latest_usage:
-        return (
-            latest_usage.get("input_tokens", 0)
-            + latest_usage.get("cache_read_input_tokens", 0)
-            + latest_usage.get("cache_creation_input_tokens", 0)
-            + total_output_tokens
-        )
-    return None
 
 
 # =============================================================================
@@ -1469,16 +1425,10 @@ def _render_progress_bar(ctx, opts):
 
 
 def _render_percentage(ctx, opts):
-    comparison = ctx.get("pct_comparison", "")
-    if opts.get("fallback") == "1":
-        return RESET + text_color("percent") + f" {ctx['pct']}\u00a0%" + comparison
     return RESET + text_color("percent") + f" {ctx['pct']}\u00a0%"
 
 
 def _render_tokens(ctx, opts):
-    token_comparison = ctx.get("token_comparison", "")
-    if opts.get("fallback") == "1":
-        return ctx["token_display"] + token_comparison
     return ctx["token_display"]
 
 
@@ -1607,13 +1557,6 @@ def _render_update(ctx, opts):
         return f"   {BOLD}{color}{latest} available! "
 
 
-def _render_context_na_message(ctx, opts):
-    """Render context N/A message only when session data unavailable"""
-    if ctx.get("na_mode"):
-        return f" {text_color('na')}  context size N/A"
-    return ""
-
-
 def _render_new_line(ctx, opts):
     """Return newline marker for multi-line output"""
     return "\n"
@@ -1632,7 +1575,6 @@ SEGMENT_RENDERERS = {
     "usage_weekly": _render_usage_weekly,
     "usage_burndown": _render_usage_burndown,
     "update": _render_update,
-    "context_na_message": _render_context_na_message,
     "new_line": _render_new_line,
 }
 
@@ -1665,8 +1607,6 @@ def build_progress_bar(
     cwd,
     total_tokens,
     context_limit,
-    transcript_tokens=None,
-    calc_pct=None,
     usage_5hour="",
     usage_weekly="",
     usage_weekly_burndown="",
@@ -1684,39 +1624,6 @@ def build_progress_bar(
 
     bar_rgb, bar_256 = get_colors_for_percentage(pct)
     model_color = get_model_colors(model)
-
-    # Build fallback comparison strings (per-segment opts)
-    token_comparison = ""
-    pct_comparison = ""
-    tokens_opts = _segment_opts("tokens")
-    pct_opts = _segment_opts("percentage")
-    has_token_diff = False
-    has_pct_diff = False
-
-    if (
-        tokens_opts.get("fallback") == "1"
-        and transcript_tokens is not None
-        and total_tokens is not None
-        and total_tokens > 0
-    ):
-        diff_pct = abs(transcript_tokens - total_tokens) / total_tokens * 100
-        if diff_pct > 10:
-            has_token_diff = True
-
-    if pct_opts.get("fallback") == "1" and calc_pct is not None and pct > 0:
-        diff_pct = abs(calc_pct - pct) / pct * 100
-        if diff_pct > 10:
-            has_pct_diff = True
-
-    if has_token_diff or has_pct_diff:
-        theme = THEMES[THEME]
-        red_rgb, red_fb = theme["usage_red"]
-        red_color = _color(red_rgb, red_fb, is_bg=False)
-
-        if has_token_diff:
-            token_comparison = f"{red_color}\u00a0{{{transcript_tokens // 1000}k}}"
-        if has_pct_diff:
-            pct_comparison = f"{red_color}\u00a0{{{calc_pct}\u00a0%}}"
 
     # Token display (may be None if only API percentage available)
     numbers_color = text_color("numbers")
@@ -1755,9 +1662,7 @@ def build_progress_bar(
         "empty_fg_str": empty_fg_str,
         "empty": empty,
         "pct": pct,
-        "pct_comparison": pct_comparison,
         "token_display": token_display,
-        "token_comparison": token_comparison,
         "cwd": cwd,
         "usage_5hour": usage_5hour,
         "usage_weekly": usage_weekly,
@@ -1778,33 +1683,6 @@ def build_progress_bar(
 
     return _join_parts(parts)
 
-
-def build_na_line(model, cwd, added_dirs=None):
-    """Build status line when no usage data available"""
-    ctx = {
-        "model": model,
-        "model_color": get_model_colors(model),
-        "effort_level": get_effort_level(),
-        "cwd": cwd,
-        "added_dirs": added_dirs or [],
-        "na_mode": True,  # Signals not_available_message to render
-    }
-
-    # Session segments render nothing in N/A mode
-    session_segments = frozenset(("progress_bar", "percentage", "tokens"))
-
-    parts = []
-    for name, opts in SEGMENTS:
-        if name in session_segments:
-            continue  # Skip session segments in N/A mode
-        renderer = SEGMENT_RENDERERS.get(name)
-        if renderer:
-            result = renderer(ctx, opts)
-            if result:
-                parts.append(result)
-    parts.append(RESET)
-
-    return _join_parts(parts)
 
 
 # =============================================================================
@@ -2263,24 +2141,10 @@ def main():
     else:
         total_tokens = None
 
-    # Calculate percentage from tokens (for comparison)
-    if total_tokens and total_tokens > 0:
-        calc_pct = min(100, int(total_tokens * 100 / context_limit))
-    else:
-        calc_pct = None
-
-    # Use API percentage, fall back to calculated
-    if used_percentage is not None:
-        pct = int(used_percentage)
-    elif calc_pct is not None:
-        pct = calc_pct
-    else:
-        print(build_na_line(model, cwd, added_dirs=added_dirs))
+    # Use API percentage
+    if used_percentage is None:
         return
-
-    # Get transcript tokens for comparison
-    transcript_path = data.get("transcript_path")
-    transcript_tokens = get_tokens_from_transcript(transcript_path)
+    pct = int(used_percentage)
 
     # Get usage limits indicators
     usage_data = fetch_usage_data()
@@ -2296,8 +2160,6 @@ def main():
             cwd,
             total_tokens,
             context_limit,
-            transcript_tokens,
-            calc_pct,
             usage_5hour=usage_parts["usage_5hour"],
             usage_weekly=usage_parts["usage_weekly"],
             usage_weekly_burndown=usage_parts.get("weekly_burndown", ""),
