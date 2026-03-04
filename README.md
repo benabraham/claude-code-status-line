@@ -100,13 +100,12 @@ SL_SEGMENTS="model progress_bar:width=20 percentage tokens directory git_branch 
 
 Each token is `segment_name` optionally followed by `:key=value` pairs. Unknown segment names are silently ignored.
 
-**Default:** `update model context_na_message progress_bar percentage tokens directory added_dirs git_branch git_status usage_5hour usage_weekly`
+**Default:** `update model progress_bar percentage tokens directory added_dirs git_branch git_status usage_5hour usage_weekly`
 
 | Segment | Description |
 |---|---|
 | `update` | Shows when a new Claude Code version is available |
 | `model` | Model badge (Opus/Sonnet/Haiku) with optional reasoning effort level |
-| `context_na_message` | Shows "context size N/A" when session data unavailable |
 | `progress_bar` | Context window progress bar |
 | `percentage` | Context usage percentage |
 | `tokens` | Token count (e.g. `84k/200k`) |
@@ -129,8 +128,6 @@ Each token is `segment_name` optionally followed by `:key=value` pairs. Unknown 
 | `added_dirs` | `basename_only` | `0`/`1` | `0` | Show only directory names instead of full paths |
 | `added_dirs` | `separator` | string | ` • ` | Separator between directory paths |
 | `git_branch` | `hide_default` | `0`/`1` | `1` | Hide branch on `main`/`master` |
-| `percentage` | `fallback` | `0`/`1` | `0` | Show fallback comparison (see below) |
-| `tokens` | `fallback` | `0`/`1` | `0` | Show fallback comparison (see below) |
 | `usage_5hour` | `gauge` | `vertical`/`blocks`/`none` | `blocks` | Gauge style |
 | `usage_5hour` | `width` | even integer >= 2 | `4` | Gauge width (invalid values reset to 4) |
 | `usage_weekly` | `gauge` | `vertical`/`blocks`/`none` | `blocks` | Gauge style |
@@ -150,9 +147,6 @@ SL_SEGMENTS='git_branch model progress_bar percentage tokens directory'
 
 # Everything except usage gauges
 SL_SEGMENTS='model progress_bar percentage tokens directory git_branch'
-
-# Wide progress bar, with fallback info enabled
-SL_SEGMENTS='model progress_bar:width=20 percentage:fallback=1 tokens:fallback=1 directory'
 
 # Different gauge styles per usage window
 SL_SEGMENTS='model progress_bar percentage usage_5hour:gauge=vertical usage_weekly:gauge=blocks:width=8'
@@ -178,12 +172,6 @@ SL_SEGMENTS='model progress_bar new_line new_line directory git_branch'
 # Empty string disables all segments
 SL_SEGMENTS=''
 ```
-
-### Fallback Info
-
-The script gets context usage from the Claude Code API (`used_percentage`). It also calculates token counts from the conversation transcript as a fallback. When the `fallback` option is enabled on the `percentage` and/or `tokens` segments and these two values differ by more than 10%, the fallback value is shown in red curly braces (e.g. `{84k}` or `{42 %}`). This helps spot cases where the API percentage may be inaccurate.
-
-**Note:** The context window size reported by Claude Code may not always reflect the actual context available. There are known bugs in Claude Code where the reported `used_percentage` or token counts can be inaccurate. The fallback comparison helps detect these discrepancies.
 
 ### Custom Version Command
 

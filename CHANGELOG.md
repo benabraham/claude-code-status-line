@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [4.12.0] - 2026-03-04
+
+### Removed
+- Legacy context window fallback code: transcript parsing, `context_na_message`
+  segment, `build_na_line()`, and `fallback` option for `percentage`/`tokens`
+  segments. Claude Code now provides `used_percentage` reliably, making these
+  mechanisms unnecessary. If `used_percentage` is missing, the status line produces
+  no output instead of showing an N/A fallback.
+
 ## [4.11.0] - 2026-03-03
 
 ### Added
