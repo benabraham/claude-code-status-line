@@ -100,7 +100,7 @@ SL_SEGMENTS="model progress_bar:width=20 percentage tokens directory git_branch 
 
 Each token is `segment_name` optionally followed by `:key=value` pairs. Unknown segment names are silently ignored.
 
-**Default:** `update model progress_bar percentage tokens directory added_dirs git_branch git_status usage_5hour usage_weekly`
+**Default:** `update model progress_bar percentage tokens directory worktree added_dirs git_branch git_status usage_5hour usage_weekly`
 
 | Segment | Description |
 |---|---|
@@ -110,6 +110,7 @@ Each token is `segment_name` optionally followed by `:key=value` pairs. Unknown 
 | `percentage` | Context usage percentage |
 | `tokens` | Token count (e.g. `84k/200k`) |
 | `directory` | Working directory path |
+| `worktree` | Worktree info in `{curly braces}` (only when running in `--worktree` session) |
 | `added_dirs` | Directories added via `/add-dir`, sorted alphabetically |
 | `git_branch` | Git branch indicator |
 | `git_status` | Git status: `+` staged, `!` modified, `x` deleted, `r` renamed, `?` untracked, `=` conflicted, `$` stashed, `>` ahead, `<` behind, `<>` diverged |
@@ -125,6 +126,7 @@ Each token is `segment_name` optionally followed by `:key=value` pairs. Unknown 
 | `model` | `effort` | `full`/`short`/(empty) | `full` | Show reasoning effort: full word, single letter, or hidden |
 | `progress_bar` | `width` | integer | `12` | Bar width in characters |
 | `directory` | `basename_only` | `0`/`1` | `0` | Show only the directory name instead of the full path |
+| `worktree` | `show` | `name`/`branch`/`path`/`origin` or comma-separated | `name` | Which worktree fields to display |
 | `added_dirs` | `basename_only` | `0`/`1` | `0` | Show only directory names instead of full paths |
 | `added_dirs` | `separator` | string | ` • ` | Separator between directory paths |
 | `git_branch` | `hide_default` | `0`/`1` | `1` | Hide branch on `main`/`master` |
@@ -254,6 +256,7 @@ gradient = [
 | `text_git` | `"#hex"` | Git branch text |
 | `text_na` | `"#hex"` | N/A indicator text |
 | `text_added_dirs` | `"#hex"` | Added directories text |
+| `text_worktree` | `"#hex"` | Worktree info text |
 | `usage_light` | `"#hex"` | Usage gauge: well ahead |
 | `usage_green` | `"#hex"` | Usage gauge: on track |
 | `usage_yellow` | `"#hex"` | Usage gauge: faster than sustainable |

@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [4.13.0] - 2026-03-05
+
+### Added
+- New `worktree` segment displaying worktree info in `{curly braces}` when running
+  in a `--worktree` session. Only renders when worktree data is present in JSON input.
+  Supports `show` option: `name` (default), `branch`, `path`, `origin`, or
+  comma-separated combo (e.g., `worktree:show=name,branch`). Path and origin apply
+  `~` home shortening. New theme color `text_worktree` (Nord15 purple).
+
 ## [4.12.0] - 2026-03-04
 
 ### Removed
