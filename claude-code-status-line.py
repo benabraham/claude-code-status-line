@@ -70,7 +70,7 @@ THEME_FILE = _env_str(
 # --- Segment system ---
 
 DEFAULT_SEGMENTS = (
-    "update model progress_bar percentage tokens directory added_dirs git_branch git_status usage_5hour usage_weekly"
+    "update model progress_bar percentage tokens directory worktree added_dirs git_branch git_status usage_5hour usage_weekly"
 )
 VALID_SEGMENTS = frozenset(DEFAULT_SEGMENTS.split() + ["new_line", "usage_burndown"])
 
@@ -82,6 +82,7 @@ SEGMENT_DEFAULTS = {
     "git_branch": {"hide_default": "1"},
     "usage_5hour": {"gauge": "blocks", "width": "4"},
     "usage_weekly": {"gauge": "blocks", "width": "4"},
+    "worktree": {"show": "name"},
     "usage_burndown": {"coeff": "1.4"},
 }
 
@@ -194,6 +195,7 @@ THEMES = {
         "text_git": (("#B48EAD", None), 139),  # nord15 purple
         "text_na": (("#D08770", None), 173),  # nord12 orange
         "text_added_dirs": (("#4C566A", None), 60),  # nord3 muted gray
+        "text_worktree": (("#B48EAD", None), 139),  # nord15 purple
         # Usage indicator colors (ratio-based)
         "usage_light": ("#88C0D0", 110),  # nord8 frost - well ahead
         "usage_green": ("#A3BE8C", 108),  # nord14 - on track
@@ -232,6 +234,7 @@ THEMES = {
         "text_git": (("#508C50", None), 65),  # muted green
         "text_na": (("#D08770", None), 173),  # nord12 orange
         "text_added_dirs": (("#7B8394", None), 103),  # medium gray
+        "text_worktree": (("#8B6B85", None), 132),  # muted purple
         # Usage indicator colors (ratio-based) - darker for light bg
         "usage_light": ("#2B7A78", 30),  # dark teal - well ahead
         "usage_green": ("#4A7C4A", 65),  # dark green - on track
@@ -332,7 +335,7 @@ def _load_custom_theme():
             overrides[key] = (h, hex_to_256(h))
 
     # Text colors: "hex" → (("hex", None), 256)
-    for key in ("text_percent", "text_numbers", "text_cwd", "text_git", "text_na", "text_added_dirs"):
+    for key in ("text_percent", "text_numbers", "text_cwd", "text_git", "text_na", "text_added_dirs", "text_worktree"):
         if key in ns:
             h = ns[key]
             if not _is_hex(h):
@@ -1466,6 +1469,28 @@ def _render_added_dirs(ctx, opts):
     return f"   {text_color('added_dirs')}{joined}"
 
 
+def _render_worktree(ctx, opts):
+    worktree = ctx.get("worktree")
+    if not worktree:
+        return ""
+    show = opts.get("show", "name")
+    fields = [f.strip() for f in show.split(",")]
+    parts = []
+    field_map = {"origin": "original"}
+    for field in fields:
+        val = worktree.get(field_map.get(field, field), "")
+        if field in ("path", "origin"):
+            home = os.path.expanduser("~")
+            if val.startswith(home):
+                val = "~" + val[len(home):]
+        if val:
+            parts.append(val)
+    if not parts:
+        return ""
+    display = " ".join(parts)
+    return f"   {BOLD}{text_color('worktree')}{{{display}}}"
+
+
 def _render_git_branch(ctx, opts):
     cwd = ctx.get("cwd")
     if not cwd:
@@ -1569,6 +1594,7 @@ SEGMENT_RENDERERS = {
     "tokens": _render_tokens,
     "directory": _render_directory,
     "added_dirs": _render_added_dirs,
+    "worktree": _render_worktree,
     "git_branch": _render_git_branch,
     "git_status": _render_git_status,
     "usage_5hour": _render_usage_5hour,
@@ -1613,6 +1639,7 @@ def build_progress_bar(
     usage_weekly_burndown_color="",
     update_info=None,
     added_dirs=None,
+    worktree=None,
 ):
     """Build the full status line string"""
     bar_width = max(1, min(128, int(_segment_opts("progress_bar").get("width", "12"))))
@@ -1670,6 +1697,7 @@ def build_progress_bar(
         "usage_weekly_burndown_color": usage_weekly_burndown_color,
         "update_info": update_info,
         "added_dirs": added_dirs or [],
+        "worktree": worktree,
     }
 
     parts = []
@@ -2123,6 +2151,7 @@ def main():
     model = data.get("model", {}).get("display_name", "Claude")
     cwd = data.get("cwd", "")
     added_dirs = data.get("workspace", {}).get("added_dirs", [])
+    worktree = data.get("worktree")
 
     # Get context window info
     context_window = data.get("context_window", {})
@@ -2166,6 +2195,7 @@ def main():
             usage_weekly_burndown_color=usage_parts.get("weekly_burndown_color", ""),
             update_info=update_info,
             added_dirs=added_dirs,
+            worktree=worktree,
         )
     )
 
