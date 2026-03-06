@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.0.0] - 2026-03-06
+
+### Removed
+- Reasoning effort level display from model segment (`model:effort` option).
+  Claude Code now shows effort level natively. Users with `model:effort=short`
+  or `model:effort=full` in `SL_SEGMENTS` should remove the option.
+
 ## [4.13.1] - 2026-03-06
 
 ### Fixed
