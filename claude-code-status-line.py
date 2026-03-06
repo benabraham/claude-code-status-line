@@ -1358,7 +1358,7 @@ def format_usage_indicators(usage_data):
                     except (ValueError, TypeError):
                         coeff = 1.4
                     days_left = seconds_until_reset / 86400
-                    min_sooner = (days_left ** coeff) * 3600
+                    min_sooner = (days_left ** coeff) * 3600 / f
                     if seconds_early >= min_sooner:
                         verbosity = burndown_opts.get("verbosity", "default")
                         burndown_text = _format_burndown(
