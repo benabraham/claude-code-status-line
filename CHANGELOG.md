@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [4.13.1] - 2026-03-06
+
+### Fixed
+- Burndown noise suppression after weekly window reset — the relevance filter
+  now scales inversely with the Bayesian trust factor, preventing misleading
+  "may run out X sooner" warnings from stale or spiked utilization data in the
+  first hours of a new window
+
 ## [4.13.0] - 2026-03-05
 
 ### Added
