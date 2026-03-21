@@ -82,8 +82,8 @@ SEGMENT_DEFAULTS = {
     "directory": {"basename_only": "0"},
     "added_dirs": {"basename_only": "0", "separator": " • "},
     "git_branch": {"hide_default": "1"},
-    "usage_5hour": {"gauge": "blocks", "width": "4"},
-    "usage_weekly": {"gauge": "blocks", "width": "4"},
+    "usage_5hour": {"gauge": "blocks", "width": "4", "invert": "0"},
+    "usage_weekly": {"gauge": "blocks", "width": "4", "invert": "0"},
     "worktree": {"show": "name"},
     "usage_burndown": {"coeff": "1.4"},
 }
@@ -1351,6 +1351,7 @@ def format_usage_indicators(usage_data):
 
         now = datetime.now(timezone.utc)
         remaining_pct = max(0, int(100 - utilization_pct))
+        display_pct = min(100, int(utilization_pct)) if opts.get("invert") == "1" else remaining_pct
         reset_label = reset_dt.astimezone().strftime(time_fmt)
 
         # Calculate time elapsed in window
@@ -1436,7 +1437,7 @@ def format_usage_indicators(usage_data):
             gauge = get_usage_gauge(ratio)
         gauge_part = f"{gauge}\u00a0" if gauge else ""
         results[segment_name] = (
-            f"   {gauge_part}{color}{remaining_pct}\u00a0%\u00a0→\u00a0{reset_label}"
+            f"   {gauge_part}{color}{display_pct}\u00a0%\u00a0→\u00a0{reset_label}"
         )
 
     for seg in ("usage_5hour", "usage_weekly"):
