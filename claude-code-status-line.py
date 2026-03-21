@@ -477,11 +477,30 @@ def get_model_colors(model):
 
 
 def text_color(key):
-    """Get text color by key: 'percent', 'numbers', 'cwd', 'git'"""
+    """Get text color by key: 'percent', 'numbers', 'cwd', 'git', 'effort'"""
     theme = THEMES[THEME]
     color_tuple = theme[f"text_{key}"]
     return fg_themed(color_tuple)
 
+
+def get_effort_level():
+    """Get reasoning effort level from settings with precedence."""
+    env_val = os.environ.get("CLAUDE_CODE_EFFORT_LEVEL", "")
+    if env_val:
+        return env_val.lower()
+    for path in [
+        os.path.join(".claude", "settings.local.json"),
+        os.path.join(".claude", "settings.json"),
+        os.path.expanduser("~/.claude/settings.json"),
+    ]:
+        try:
+            with open(path) as f:
+                val = json.load(f).get("effortLevel", "")
+            if val:
+                return val.lower()
+        except (OSError, json.JSONDecodeError, KeyError):
+            pass
+    return "auto"
 
 
 # =============================================================================
@@ -1404,7 +1423,15 @@ def format_usage_indicators(usage_data):
 
 
 def _render_model(ctx, opts):
-    return ctx["model_color"] + center_text(ctx["model"]) + RESET
+    label = ctx["model"]
+    effort = opts.get("effort", "")
+    if effort in ("short", "full"):
+        level = ctx.get("effort_level", "auto")
+        if effort == "short":
+            label = f"{label} {SHORT_EFFORT.get(level, level[0].upper() if level else '?')}"
+        else:
+            label = f"{label} {level}"
+    return ctx["model_color"] + center_text(label) + RESET
 
 
 def _render_progress_bar(ctx, opts):
@@ -1578,6 +1605,9 @@ def _render_new_line(ctx, opts):
     return "\n"
 
 
+SHORT_EFFORT = {"low": "L", "medium": "M", "high": "H", "auto": "A", "max": "max"}
+
+
 SEGMENT_RENDERERS = {
     "model": _render_model,
     "progress_bar": _render_progress_bar,
@@ -1688,6 +1718,7 @@ def build_progress_bar(
         "update_info": update_info,
         "added_dirs": added_dirs or [],
         "worktree": worktree,
+        "effort_level": get_effort_level(),
     }
 
     parts = []
