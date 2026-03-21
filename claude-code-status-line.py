@@ -35,7 +35,7 @@ import time
 import tty
 from datetime import datetime, timezone
 
-VERSION = "5.0.0"
+VERSION = "5.1.0"
 
 # =============================================================================
 # CONFIGURATION — override any setting via environment variables (SL_ prefix)
@@ -55,6 +55,7 @@ def _env_int(key, default):
 
 
 THEME = _env_str("THEME", "dark")
+# Deprecated: only used by fetch_usage_data() fallback. Will be removed in a future version.
 USAGE_CACHE_DURATION = _env_int("USAGE_CACHE_DURATION", 300)
 UPDATE_CACHE_DURATION = _env_int("UPDATE_CACHE_DURATION", 3600)  # 1 hour on success
 UPDATE_RETRY_DURATION = _env_int("UPDATE_RETRY_DURATION", 600)  # 10 min retry on failure
@@ -623,8 +624,37 @@ STATUSLINE_CACHE_PATH = os.path.expanduser("~/.claude/.statusline_cache.json")
 CREDENTIALS_PATH = os.path.expanduser("~/.claude/.credentials.json")
 
 
+def _normalize_usage_data(rate_limits):
+    """Convert rate_limits from CC stdin JSON to internal usage format.
+
+    CC 2.1.80+ sends: {used_percentage: float, resets_at: unix_timestamp}
+    Internal format:  {utilization: int, resets_at: ISO8601_string}
+    """
+    if not rate_limits:
+        return None
+    result = {}
+    for key in ("five_hour", "seven_day"):
+        window = rate_limits.get(key)
+        if not window:
+            continue
+        used_pct = window.get("used_percentage")
+        resets_at = window.get("resets_at")
+        if used_pct is None or resets_at is None:
+            continue
+        reset_dt = datetime.fromtimestamp(resets_at, tz=timezone.utc)
+        result[key] = {
+            "utilization": used_pct,
+            "resets_at": reset_dt.isoformat(),
+        }
+    return result if result else None
+
+
 def get_oauth_token():
-    """Get OAuth access token from macOS Keychain or credentials file."""
+    """Get OAuth access token from macOS Keychain or credentials file.
+
+    Deprecated: Only used by fetch_usage_data() which is itself deprecated.
+    Will be removed in a future version.
+    """
     # On macOS, try Keychain first
     if sys.platform == "darwin":
         try:
@@ -656,7 +686,12 @@ def get_oauth_token():
 
 
 def fetch_usage_data():
-    """Fetch usage data from Anthropic OAuth API, with caching."""
+    """Fetch usage data from Anthropic OAuth API, with caching.
+
+    Deprecated: CC 2.1.80+ provides rate_limits in stdin JSON. This function
+    is kept as a fallback for older CC versions and will be removed in a
+    future version along with get_oauth_token() and USAGE_CACHE_PATH.
+    """
     # Check cache first
     try:
         if os.path.exists(USAGE_CACHE_PATH):
@@ -2199,8 +2234,12 @@ def main():
         return
     pct = int(used_percentage)
 
-    # Get usage limits indicators
-    usage_data = fetch_usage_data()
+    # Get usage limits indicators (prefer stdin from CC 2.1.80+, fallback to OAuth API)
+    rate_limits = data.get("rate_limits")
+    if rate_limits:
+        usage_data = _normalize_usage_data(rate_limits)
+    else:
+        usage_data = fetch_usage_data()  # Deprecated: will be removed in a future version
     usage_parts = format_usage_indicators(usage_data)
 
     # Check for updates

@@ -41,7 +41,7 @@ Key sections in `claude-code-status-line.py` (~2,200 lines):
 - **Lines ~170-355**: Theme system — `THEMES` dict (dark/light, Nord-inspired), `_load_custom_theme()` loads optional `~/.claude/claude-code-theme.toml` via `tomllib`
 - **Lines ~468**: `get_git_branch()` — subprocess call to `git branch --show-current`, strips ESC characters from output
 - **Lines ~497**: `get_git_status()` — collects working directory state (staged/modified/deleted/renamed/untracked/conflicted), stash count, and ahead/behind status via `git status --porcelain=v1`, `git stash list`, and `git rev-list`
-- **Lines ~571**: `fetch_usage_data()` — OAuth API call via `curl` subprocess, cached atomically to `~/.claude/.usage_cache.json` for `USAGE_CACHE_DURATION` seconds
+- **Lines ~571**: `_normalize_usage_data()` — converts CC 2.1.80+ `rate_limits` stdin JSON (unix timestamps, float percentages) to internal format (ISO 8601, utilization). `fetch_usage_data()` (deprecated) — OAuth API fallback for older CC versions, cached atomically to `~/.claude/.usage_cache.json`
 - **Lines ~639-746**: Update checker — `get_installed_version()` runs `claude --version`, `fetch_latest_version()` queries npm registry with caching to `~/.claude/.update_cache.json`, `check_for_update()` compares versions via `parse_semver()`
 - **Lines ~749-870**: Usage gauge rendering — vertical (block chars ▁▂▃▄▅▆▇█) and horizontal blocks styles with forward-looking ratio logic
 - **Lines ~872**: `format_usage_indicators()` — returns dict with per-window usage strings
@@ -70,7 +70,8 @@ Key sections in `claude-code-status-line.py` (~2,200 lines):
 - **Custom themes**: loaded via `tomllib` from a TOML file (Python 3.11+, `tomli` fallback), only the defined keys override the base theme. Silently skipped if no TOML parser available.
 - **Progress bar precision**: Unicode fractional blocks (▏▎▍▌▋▊▉█) for sub-character precision with gradient color interpolation across 10 thresholds.
 - **Input validation**: OAuth token characters allowlisted before HTTP use. Git branch names stripped of ESC chars. Segment widths capped at 128. Hex colors length-checked. Usage ratio guarded against near-zero divisor.
-- **Credential sources**: macOS Keychain (`security` command) → `~/.claude/.credentials.json` fallback.
+- **Usage data source**: CC 2.1.80+ sends `rate_limits` in stdin JSON (preferred). Falls back to deprecated OAuth API (`fetch_usage_data()`) for older CC versions. OAuth path (`get_oauth_token()`, `USAGE_CACHE_PATH`, `SL_USAGE_CACHE_DURATION`) will be removed in a future version.
+- **Credential sources**: macOS Keychain (`security` command) → `~/.claude/.credentials.json` fallback (deprecated, only used by OAuth fallback).
 - **Cache writes**: atomic via `tempfile.mkstemp()` + `os.replace()` with temp file cleanup on failure.
 - **No type hints** per project convention — uses f-strings throughout.
 - **Effort level limitations**: The statusline JSON from Claude Code does NOT include effort level. The `model:effort` option reads from settings files as a workaround. Known gaps:
