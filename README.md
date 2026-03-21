@@ -89,6 +89,7 @@ Alternatively, edit the defaults at the top of the script.
 | `SL_UPDATE_VERSION_SOURCE` | `custom` | Label for custom version source (e.g., `numtide`, `nixpkgs`) |
 | `SL_SHOW_STATUSLINE_UPDATE` | `1` | Show status line update notifications (`0` to disable) |
 | `SL_THEME_FILE` | `~/.claude/claude-code-theme.toml` | Path to custom theme file (see below) |
+| `SL_DUMP` | (empty) | Set to `1` to log raw stdin JSON to `/tmp/claude-statusline-dump.jsonl` |
 
 ### Segment Order & Options
 
@@ -105,7 +106,7 @@ Each token is `segment_name` optionally followed by `:key=value` pairs. Unknown 
 | Segment | Description |
 |---|---|
 | `update` | Shows when a new Claude Code version is available |
-| `model` | Model badge (Opus/Sonnet/Haiku) |
+| `model` | Model badge (Opus/Sonnet/Haiku) with optional effort level display |
 | `progress_bar` | Context window progress bar |
 | `percentage` | Context usage percentage |
 | `tokens` | Token count (e.g. `84k/200k`) |
@@ -123,6 +124,7 @@ Each token is `segment_name` optionally followed by `:key=value` pairs. Unknown 
 
 | Segment | Option | Values | Default | Description |
 |---|---|---|---|---|
+| `model` | `effort` | `short`/`full` | (off) | Show effort level: `short` (L/M/H/A) or `full` (low/medium/high/auto) |
 | `progress_bar` | `width` | integer | `12` | Bar width in characters |
 | `directory` | `basename_only` | `0`/`1` | `0` | Show only the directory name instead of the full path |
 | `worktree` | `show` | `name`/`branch`/`path`/`origin` or comma-separated | `name` | Which worktree fields to display |

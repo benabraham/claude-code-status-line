@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.1.0] - 2026-03-21
+
+### Added
+- **Effort level display** in model badge via `model:effort=short` (L/M/H/A) or
+  `model:effort=full` (low/medium/high/auto). Reads from settings files with
+  precedence: env var → project-local → project → user global. Note: `max` level
+  is session-only and cannot be detected.
+- **Dump mode** (`SL_DUMP=1`) for development: appends every stdin JSON input with
+  timestamp to `/tmp/claude-statusline-dump.jsonl`. Normal rendering continues.
+- **Native rate_limits support**: reads usage data directly from CC 2.1.80+ stdin
+  JSON (`rate_limits` field), eliminating the need for OAuth API calls. Falls back
+  to deprecated OAuth API for older CC versions.
+
 ## [5.0.0] - 2026-03-06
 
 ### Removed
