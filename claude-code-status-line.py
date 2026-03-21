@@ -66,6 +66,8 @@ SHOW_STATUSLINE_UPDATE = _env_str("SHOW_STATUSLINE_UPDATE", "1") == "1"
 THEME_FILE = _env_str(
     "THEME_FILE", os.path.expanduser("~/.claude/claude-code-theme.toml")
 )
+DUMP = _env_str("DUMP", "")
+DUMP_PATH = "/tmp/claude-statusline-dump.jsonl"
 
 # --- Segment system ---
 
@@ -120,6 +122,20 @@ def _parse_segments(raw):
 
 
 SEGMENTS = _parse_segments(os.environ.get("SL_SEGMENTS"))
+
+
+def _dump_input(data):
+    if not DUMP:
+        return
+    try:
+        entry = json.dumps({
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "input": data,
+        })
+        with open(DUMP_PATH, "a") as f:
+            f.write(entry + "\n")
+    except Exception:
+        pass
 
 
 def _has_segment(name):
@@ -2117,10 +2133,13 @@ def main():
 
     # Read and parse JSON input
     try:
-        data = json.load(sys.stdin)
-    except json.JSONDecodeError:
+        raw = sys.stdin.read()
+        data = json.loads(raw)
+    except (json.JSONDecodeError, ValueError):
         print("statusline: invalid JSON input", file=sys.stderr)
         return
+
+    _dump_input(data)
 
     model = data.get("model", {}).get("display_name", "Claude")
     cwd = data.get("cwd", "")
