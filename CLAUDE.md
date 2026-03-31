@@ -73,6 +73,7 @@ Key sections in `claude-code-status-line.py` (~2,200 lines):
 - **Usage data source**: CC 2.1.80+ sends `rate_limits` in stdin JSON (preferred). Falls back to deprecated OAuth API (`fetch_usage_data()`) for older CC versions. OAuth path (`get_oauth_token()`, `USAGE_CACHE_PATH`, `SL_USAGE_CACHE_DURATION`) will be removed in a future version.
 - **Credential sources**: macOS Keychain (`security` command) → `~/.claude/.credentials.json` fallback (deprecated, only used by OAuth fallback).
 - **Cache writes**: atomic via `tempfile.mkstemp()` + `os.replace()` with temp file cleanup on failure.
+- **Plugin system**: auto-discovers `.py` files in `.claude/statusline/` (project-level, cwd-relative) and `~/.claude/statusline/` (global). Each plugin defines `register(api)` where `api` provides `add_segment(name, renderer, defaults)`, `fg(color)`, `bg(color)`, `text_color(key)`, `RESET`, `BOLD`. Registered segments become valid in `SL_SEGMENTS`. Plugin errors are silently ignored. The `ctx` dict passed to renderers includes `data` (raw JSON from Claude Code stdin) so plugins can access `session_id`, `cwd`, and other fields.
 - **No type hints** per project convention — uses f-strings throughout.
 - **Effort level limitations**: The statusline JSON from Claude Code does NOT include effort level. The `model:effort` option reads from settings files as a workaround. Known gaps:
   - `max` is session-only (never written to disk) — undetectable

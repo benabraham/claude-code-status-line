@@ -33,7 +33,7 @@ import tempfile
 import termios
 import time
 import tty
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 VERSION = "5.1.0"
 
@@ -64,17 +64,13 @@ UPDATE_VERSION_CMD = _env_str("UPDATE_VERSION_CMD", "")  # Custom command to fet
 UPDATE_VERSION_SOURCE = _env_str("UPDATE_VERSION_SOURCE", "custom")  # Label for custom source
 STATUSLINE_CACHE_DURATION = _env_int("STATUSLINE_CACHE_DURATION", 86400)  # 24 hours
 SHOW_STATUSLINE_UPDATE = _env_str("SHOW_STATUSLINE_UPDATE", "1") == "1"
-THEME_FILE = _env_str(
-    "THEME_FILE", os.path.expanduser("~/.claude/claude-code-theme.toml")
-)
+THEME_FILE = _env_str("THEME_FILE", os.path.expanduser("~/.claude/claude-code-theme.toml"))
 DUMP = _env_str("DUMP", "")
 DUMP_PATH = "/tmp/claude-statusline-dump.jsonl"
 
 # --- Segment system ---
 
-DEFAULT_SEGMENTS = (
-    "update model progress_bar percentage tokens directory worktree added_dirs git_branch git_status usage_5hour usage_weekly"
-)
+DEFAULT_SEGMENTS = "update model progress_bar percentage tokens directory worktree added_dirs git_branch git_status usage_5hour usage_weekly"
 VALID_SEGMENTS = frozenset(DEFAULT_SEGMENTS.split() + ["new_line", "usage_burndown"])
 
 SEGMENT_DEFAULTS = {
@@ -129,10 +125,12 @@ def _dump_input(data):
     if not DUMP:
         return
     try:
-        entry = json.dumps({
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "input": data,
-        })
+        entry = json.dumps(
+            {
+                "timestamp": datetime.now(UTC).isoformat(),
+                "input": data,
+            }
+        )
         with open(DUMP_PATH, "a") as f:
             f.write(entry + "\n")
     except Exception:
@@ -367,10 +365,7 @@ def _load_custom_theme():
             and _is_hex(item.get("color", ""))
             for item in raw
         ):
-            overrides["gradient"] = [
-                (item["threshold"], (item["color"], hex_to_256(item["color"])))
-                for item in raw
-            ]
+            overrides["gradient"] = [(item["threshold"], (item["color"], hex_to_256(item["color"]))) for item in raw]
 
     if not overrides:
         return
@@ -412,8 +407,7 @@ def _color(rgb, fallback_256, is_bg=False):
         if isinstance(rgb, str):
             rgb = hex_to_rgb(rgb)
         return f"\033[{prefix};2;{rgb[0]};{rgb[1]};{rgb[2]}m"
-    else:
-        return f"\033[{prefix};5;{fallback_256}m"
+    return f"\033[{prefix};5;{fallback_256}m"
 
 
 def fg_themed(color_tuple):
@@ -556,22 +550,22 @@ def get_git_status(cwd):
                 continue
             x, y = line[0], line[1]
             # Conflict states
-            if x == 'U' or y == 'U' or (x == 'A' and y == 'A') or (x == 'D' and y == 'D'):
+            if x == "U" or y == "U" or (x == "A" and y == "A") or (x == "D" and y == "D"):
                 conflicted += 1
             else:
                 # Index (staged) changes
-                if x in 'MARC':
+                if x in "MARC":
                     staged += 1
-                if x == 'R':
+                if x == "R":
                     renamed += 1
-                if x == 'D':
+                if x == "D":
                     deleted += 1
                 # Worktree changes
-                if y == 'M':
+                if y == "M":
                     modified += 1
-                if y == 'D':
+                if y == "D":
                     deleted += 1
-                if y == '?':
+                if y == "?":
                     untracked += 1
 
         # Check stash
@@ -613,7 +607,6 @@ def get_git_status(cwd):
         return None
 
 
-
 # =============================================================================
 # USAGE LIMITS API
 # =============================================================================
@@ -641,12 +634,12 @@ def _normalize_usage_data(rate_limits):
         resets_at = window.get("resets_at")
         if used_pct is None or resets_at is None:
             continue
-        reset_dt = datetime.fromtimestamp(resets_at, tz=timezone.utc)
+        reset_dt = datetime.fromtimestamp(resets_at, tz=UTC)
         result[key] = {
             "utilization": used_pct,
             "resets_at": reset_dt.isoformat(),
         }
-    return result if result else None
+    return result or None
 
 
 def get_oauth_token():
@@ -678,10 +671,10 @@ def get_oauth_token():
 
     # Fallback to credentials file (Linux, Windows, or if Keychain fails)
     try:
-        with open(CREDENTIALS_PATH, "r") as f:
+        with open(CREDENTIALS_PATH) as f:
             creds = json.load(f)
         return creds.get("claudeAiOauth", {}).get("accessToken")
-    except (IOError, json.JSONDecodeError, KeyError):
+    except (OSError, json.JSONDecodeError, KeyError):
         return None
 
 
@@ -695,11 +688,11 @@ def fetch_usage_data():
     # Check cache first
     try:
         if os.path.exists(USAGE_CACHE_PATH):
-            with open(USAGE_CACHE_PATH, "r") as f:
+            with open(USAGE_CACHE_PATH) as f:
                 cache = json.load(f)
             if time.time() - cache.get("timestamp", 0) < USAGE_CACHE_DURATION:
                 return cache.get("data")
-    except (IOError, json.JSONDecodeError):
+    except (OSError, json.JSONDecodeError):
         pass
 
     # Get OAuth token and validate it contains only safe characters
@@ -746,7 +739,7 @@ def fetch_usage_data():
             with os.fdopen(fd, "w") as f:
                 json.dump({"timestamp": time.time(), "data": data}, f)
             os.replace(tmp_path, USAGE_CACHE_PATH)
-        except (IOError, OSError):
+        except OSError:
             if tmp_path:
                 try:
                     os.unlink(tmp_path)
@@ -853,7 +846,7 @@ def fetch_latest_version():
     # Check cache first
     try:
         if os.path.exists(UPDATE_CACHE_PATH):
-            with open(UPDATE_CACHE_PATH, "r") as f:
+            with open(UPDATE_CACHE_PATH) as f:
                 cache = json.load(f)
             # Invalidate cache if version_cmd changed
             if cache.get("version_cmd", "") != UPDATE_VERSION_CMD:
@@ -873,7 +866,7 @@ def fetch_latest_version():
                     cooldown = UPDATE_CUSTOM_RETRY_DURATION if failed_source == "custom" else UPDATE_RETRY_DURATION
                     if age < cooldown:
                         return (None, None)  # Still in failure cooldown
-    except (IOError, json.JSONDecodeError):
+    except (OSError, json.JSONDecodeError):
         pass
 
     version = None
@@ -912,15 +905,18 @@ def fetch_latest_version():
         cache_dir = os.path.dirname(UPDATE_CACHE_PATH)
         fd, tmp_path = tempfile.mkstemp(dir=cache_dir)
         with os.fdopen(fd, "w") as f:
-            json.dump({
-                "timestamp": time.time(),
-                "version": version,
-                "source": source,
-                "version_cmd": UPDATE_VERSION_CMD,
-                "failed_source": failed_source,
-            }, f)
+            json.dump(
+                {
+                    "timestamp": time.time(),
+                    "version": version,
+                    "source": source,
+                    "version_cmd": UPDATE_VERSION_CMD,
+                    "failed_source": failed_source,
+                },
+                f,
+            )
         os.replace(tmp_path, UPDATE_CACHE_PATH)
-    except (IOError, OSError):
+    except OSError:
         if tmp_path:
             try:
                 os.unlink(tmp_path)
@@ -951,17 +947,16 @@ def fetch_latest_statusline_version():
 
     try:
         if os.path.exists(STATUSLINE_CACHE_PATH):
-            with open(STATUSLINE_CACHE_PATH, "r") as f:
+            with open(STATUSLINE_CACHE_PATH) as f:
                 cache = json.load(f)
             age = time.time() - cache.get("timestamp", 0)
             cached_version = cache.get("version")
             if cached_version:
                 if age < STATUSLINE_CACHE_DURATION:
                     return cached_version
-            else:
-                if age < UPDATE_RETRY_DURATION:
-                    return None
-    except (IOError, json.JSONDecodeError):
+            elif age < UPDATE_RETRY_DURATION:
+                return None
+    except (OSError, json.JSONDecodeError):
         pass
 
     version = None
@@ -994,7 +989,7 @@ def fetch_latest_statusline_version():
         with os.fdopen(fd, "w") as f:
             json.dump({"timestamp": time.time(), "version": version}, f)
         os.replace(tmp_path, STATUSLINE_CACHE_PATH)
-    except (IOError, OSError):
+    except OSError:
         if tmp_path:
             try:
                 os.unlink(tmp_path)
@@ -1075,7 +1070,7 @@ def perform_self_update():
         os.replace(tmp_path, script_path)
         print(f"Updated to v{latest}")
         return 0
-    except (IOError, OSError) as e:
+    except OSError as e:
         print(f"Error writing update: {e}")
         if tmp_path:
             try:
@@ -1127,24 +1122,23 @@ def get_usage_gauge(ratio):
         bg = _color(green_rgb, green_fb, is_bg=True)
         fg = _color(empty_rgb, empty_fb, is_bg=False)
         return f"{bg}{fg}{char}{RESET}"
+    # Behind - show how much behind, filling from bottom (yellow/red)
+    behind = min(1.0, 1.0 - ratio)  # 0 = on track, 1 = critical
+
+    empty_rgb, empty_fb = theme["bar_empty"]
+    if ratio >= 0.75:
+        warn_rgb, warn_fb = theme["usage_yellow"]
     else:
-        # Behind - show how much behind, filling from bottom (yellow/red)
-        behind = min(1.0, 1.0 - ratio)  # 0 = on track, 1 = critical
+        warn_rgb, warn_fb = theme["usage_red"]
 
-        empty_rgb, empty_fb = theme["bar_empty"]
-        if ratio >= 0.75:
-            warn_rgb, warn_fb = theme["usage_yellow"]
-        else:
-            warn_rgb, warn_fb = theme["usage_red"]
+    index = int(behind * 7.99)
+    index = max(0, min(7, index))
+    # Use space if index is 0 (too small to show)
+    char = gauges[index] if index > 0 else " "
 
-        index = int(behind * 7.99)
-        index = max(0, min(7, index))
-        # Use space if index is 0 (too small to show)
-        char = gauges[index] if index > 0 else " "
-
-        bg = _color(empty_rgb, empty_fb, is_bg=True)
-        fg = _color(warn_rgb, warn_fb, is_bg=False)
-        return f"{bg}{fg}{char}{RESET}"
+    bg = _color(empty_rgb, empty_fb, is_bg=True)
+    fg = _color(warn_rgb, warn_fb, is_bg=False)
+    return f"{bg}{fg}{char}{RESET}"
 
 
 def get_usage_gauge_blocks(ratio, gauge_width=4):
@@ -1259,8 +1253,7 @@ def _format_duration_compact(seconds):
     return "".join(parts)
 
 
-def _format_burndown(seconds_to_depletion, seconds_early, seconds_until_reset,
-                     verbosity="default"):
+def _format_burndown(seconds_to_depletion, seconds_early, seconds_until_reset, verbosity="default"):
     """Format burndown message adapting to where user is in the weekly window.
 
     Three modes (default verbosity):
@@ -1344,12 +1337,12 @@ def format_usage_indicators(usage_data):
         try:
             reset_dt = datetime.fromisoformat(resets_at.replace("Z", "+00:00"))
             if reset_dt.tzinfo is None:
-                reset_dt = reset_dt.replace(tzinfo=timezone.utc)
+                reset_dt = reset_dt.replace(tzinfo=UTC)
         except ValueError:
             results[segment_name] = ""
             continue
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         remaining_pct = max(0, int(100 - utilization_pct))
         reset_label = reset_dt.astimezone().strftime(time_fmt)
 
@@ -1411,11 +1404,13 @@ def format_usage_indicators(usage_data):
                     except (ValueError, TypeError):
                         coeff = 1.4
                     days_left = seconds_until_reset / 86400
-                    min_sooner = (days_left ** coeff) * 3600 / f
+                    min_sooner = (days_left**coeff) * 3600 / f
                     if seconds_early >= min_sooner:
                         verbosity = burndown_opts.get("verbosity", "default")
                         burndown_text = _format_burndown(
-                            seconds_to_depletion, seconds_early, seconds_until_reset,
+                            seconds_to_depletion,
+                            seconds_early,
+                            seconds_until_reset,
                             verbosity=verbosity,
                         )
                         if burndown_text:
@@ -1435,9 +1430,7 @@ def format_usage_indicators(usage_data):
         else:
             gauge = get_usage_gauge(ratio)
         gauge_part = f"{gauge}\u00a0" if gauge else ""
-        results[segment_name] = (
-            f"   {gauge_part}{color}{remaining_pct}\u00a0%\u00a0→\u00a0{reset_label}"
-        )
+        results[segment_name] = f"   {gauge_part}{color}{remaining_pct}\u00a0%\u00a0→\u00a0{reset_label}"
 
     for seg in ("usage_5hour", "usage_weekly"):
         if seg not in results:
@@ -1470,14 +1463,7 @@ def _render_model(ctx, opts):
 
 
 def _render_progress_bar(ctx, opts):
-    return (
-        ctx["fill_fg"]
-        + "█" * ctx["filled"]
-        + ctx["transition"]
-        + RESET
-        + ctx["empty_fg_str"]
-        + "█" * ctx["empty"]
-    )
+    return ctx["fill_fg"] + "█" * ctx["filled"] + ctx["transition"] + RESET + ctx["empty_fg_str"] + "█" * ctx["empty"]
 
 
 def _render_percentage(ctx, opts):
@@ -1514,7 +1500,7 @@ def _render_added_dirs(ctx, opts):
         if basename_only:
             shortened.append(os.path.basename(d) or d)
         elif d.startswith(home):
-            shortened.append("~" + d[len(home):])
+            shortened.append("~" + d[len(home) :])
         else:
             shortened.append(d)
     separator = opts.get("separator", " • ")
@@ -1535,7 +1521,7 @@ def _render_worktree(ctx, opts):
         if field in ("path", "origin"):
             home = os.path.expanduser("~")
             if val.startswith(home):
-                val = "~" + val[len(home):]
+                val = "~" + val[len(home) :]
         if val:
             parts.append(val)
     if not parts:
@@ -1624,15 +1610,14 @@ def _render_update(ctx, opts):
     if source == "npm":
         # Standard npm source - simple message
         return f"   {BOLD}{color}{latest} available! "
-    elif source == "custom":
+    if source == "custom":
         # Custom command succeeded - show custom source label
         return f"   {BOLD}{color}{latest} available ({UPDATE_VERSION_SOURCE})! "
-    elif source == "npm_fallback":
+    if source == "npm_fallback":
         # Custom command failed, fell back to npm
         return f"   {BOLD}{color}{latest} available from NPM! Custom source failed. "
-    else:
-        # Unknown source - fallback to simple message
-        return f"   {BOLD}{color}{latest} available! "
+    # Unknown source - fallback to simple message
+    return f"   {BOLD}{color}{latest} available! "
 
 
 def _render_new_line(ctx, opts):
@@ -1659,6 +1644,125 @@ SEGMENT_RENDERERS = {
     "update": _render_update,
     "new_line": _render_new_line,
 }
+
+
+# =============================================================================
+# PLUGIN SYSTEM
+# =============================================================================
+
+"""
+Plugin directories (searched in order):
+  1. Project-level: .claude/statusline/ (relative to cwd)
+  2. Global: ~/.claude/statusline/
+
+Each plugin is a .py file that defines a register(api) function.
+The api object provides:
+  - api.add_segment(name, renderer, defaults=None)
+      Register a custom segment renderer. renderer(ctx, opts) -> str
+  - api.RESET, api.BOLD — ANSI constants
+  - api.fg(hex_or_256) — foreground color code
+  - api.bg(hex_or_256) — background color code
+  - api.text_color(key) — theme text color
+
+Plugins are loaded once at import time. Segment names from plugins
+are automatically added to VALID_SEGMENTS so they can be used in
+SL_SEGMENTS configuration.
+"""
+
+
+class _PluginAPI:
+    """API object passed to plugin register() functions."""
+
+    RESET = RESET
+    BOLD = BOLD
+
+    @staticmethod
+    def fg(color):
+        """Foreground color from hex string ('#RRGGBB') or 256-color int."""
+        if isinstance(color, str) and color.startswith("#"):
+            return _color(color, hex_to_256(color), is_bg=False)
+        if isinstance(color, int):
+            return _color(None, color, is_bg=False)
+        return ""
+
+    @staticmethod
+    def bg(color):
+        """Background color from hex string ('#RRGGBB') or 256-color int."""
+        if isinstance(color, str) and color.startswith("#"):
+            return _color(color, hex_to_256(color), is_bg=True)
+        if isinstance(color, int):
+            return _color(None, color, is_bg=True)
+        return ""
+
+    @staticmethod
+    def text_color(key):
+        """Get themed text color by key (e.g. 'percent', 'cwd', 'git')."""
+        return text_color(key)
+
+    @staticmethod
+    def add_segment(name, renderer, defaults=None):
+        """Register a custom segment renderer.
+
+        Args:
+            name: Segment name (used in SL_SEGMENTS)
+            renderer: Function(ctx, opts) -> str
+            defaults: Optional dict of default options for this segment
+        """
+        SEGMENT_RENDERERS[name] = renderer
+        if defaults:
+            SEGMENT_DEFAULTS[name] = defaults
+
+
+def _load_plugins():
+    """Discover and load plugins from project and global directories."""
+    global VALID_SEGMENTS, SEGMENTS
+    plugin_dirs = []
+
+    # Project-level plugins (cwd-relative)
+    project_dir = os.path.join(".claude", "statusline")
+    if os.path.isdir(project_dir):
+        plugin_dirs.append(project_dir)
+
+    # Global plugins
+    global_dir = os.path.expanduser("~/.claude/statusline")
+    if os.path.isdir(global_dir):
+        plugin_dirs.append(global_dir)
+
+    if not plugin_dirs:
+        return
+
+    api = _PluginAPI()
+    registered_before = set(SEGMENT_RENDERERS.keys())
+
+    for plugin_dir in plugin_dirs:
+        try:
+            for filename in sorted(os.listdir(plugin_dir)):
+                if not filename.endswith(".py") or filename.startswith("_"):
+                    continue
+                filepath = os.path.join(plugin_dir, filename)
+                try:
+                    # Load plugin module
+                    import importlib.util
+
+                    spec = importlib.util.spec_from_file_location(f"statusline_plugin_{filename[:-3]}", filepath)
+                    module = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(module)
+                    if hasattr(module, "register"):
+                        module.register(api)
+                except Exception:
+                    pass  # Silent failure — broken plugin shouldn't break statusline
+        except OSError:
+            pass
+
+    # Update VALID_SEGMENTS with any newly registered segment names
+    new_segments = set(SEGMENT_RENDERERS.keys()) - registered_before
+    if new_segments:
+        VALID_SEGMENTS = VALID_SEGMENTS | new_segments
+        # Re-parse segments to pick up newly valid plugin segments
+        SEGMENTS = _parse_segments(os.environ.get("SL_SEGMENTS"))
+
+
+_load_plugins()
 
 
 # =============================================================================
@@ -1696,6 +1800,7 @@ def build_progress_bar(
     update_info=None,
     added_dirs=None,
     worktree=None,
+    data=None,
 ):
     """Build the full status line string"""
     bar_width = max(1, min(128, int(_segment_opts("progress_bar").get("width", "12"))))
@@ -1711,9 +1816,7 @@ def build_progress_bar(
     # Token display (may be None if only API percentage available)
     numbers_color = text_color("numbers")
     if total_tokens is not None:
-        token_display = (
-            f"{numbers_color}\u00a0({total_tokens // 1000}k/{context_limit // 1000}k)"
-        )
+        token_display = f"{numbers_color}\u00a0({total_tokens // 1000}k/{context_limit // 1000}k)"
     else:
         token_display = f"{numbers_color}\u00a0(--/{context_limit // 1000}k)"
 
@@ -1754,6 +1857,7 @@ def build_progress_bar(
         "added_dirs": added_dirs or [],
         "worktree": worktree,
         "effort_level": get_effort_level(),
+        "data": data or {},
     }
 
     parts = []
@@ -1766,7 +1870,6 @@ def build_progress_bar(
     parts.append(RESET)
 
     return _join_parts(parts)
-
 
 
 # =============================================================================
@@ -1855,9 +1958,7 @@ def show_usage_demo():
     ]
 
     print()
-    print(
-        "Usage Indicator Demo (forward-looking ratio = remaining budget / remaining time):"
-    )
+    print("Usage Indicator Demo (forward-looking ratio = remaining budget / remaining time):")
     print("=" * 75)
     print("  ratio >= 1.33: light | 1.0-1.33: green | 0.75-1.0: yellow | < 0.75: red")
     print()
@@ -1893,9 +1994,7 @@ def show_scale_demo(mode="animate"):
 
     def show_bar(pct):
         BLOCKS = " ▏▎▍▌▋▊▉█"
-        bar_width = max(
-            1, min(128, int(_segment_opts("progress_bar").get("width", "12")))
-        )
+        bar_width = max(1, min(128, int(_segment_opts("progress_bar").get("width", "12"))))
         bar_length = bar_width
         exact_fill = pct * bar_width / 100
         filled = int(exact_fill)
@@ -1917,15 +2016,7 @@ def show_scale_demo(mode="animate"):
             transition = bg_empty + fill_fg + BLOCKS[block_index]
 
         empty = bar_length - filled - (1 if transition else 0)
-        bar = (
-            fill_fg
-            + "█" * filled
-            + transition
-            + RESET
-            + empty_fg_str
-            + "█" * empty
-            + RESET
-        )
+        bar = fill_fg + "█" * filled + transition + RESET + empty_fg_str + "█" * empty + RESET
         return bar
 
     if mode == "animate":
@@ -2015,9 +2106,7 @@ def show_gauge_sweep_demo():
                 sys.stdout.write(f"\033[{num_lines}A")
                 sys.stdout.write(f"{CL}\n")
                 label = f"ratio: {ratio:.2f}  ({zone})"
-                sys.stdout.write(
-                    f"  {vertical}{RESET}    {label:<24s}    {blocks}{RESET}{CL}\n"
-                )
+                sys.stdout.write(f"  {vertical}{RESET}    {label:<24s}    {blocks}{RESET}{CL}\n")
                 sys.stdout.write(f"{CL}\n")
                 sys.stdout.flush()
                 if _key_pressed(0.03):
@@ -2082,10 +2171,7 @@ def show_usage_principle_demo():
         v = get_usage_gauge(ratio)
         b = get_usage_gauge_blocks(ratio, gauge_width=8)
         pct_str = str(remaining_pct).rjust(3).replace(" ", NBSP)
-        return (
-            f"{PAD}{v}{RESET}  {b}{RESET}"
-            f" {color}{pct_str}{NBSP}%{NBSP}\u2192{NBSP}{reset_label}{RESET}"
-        )
+        return f"{PAD}{v}{RESET}  {b}{RESET} {color}{pct_str}{NBSP}%{NBSP}\u2192{NBSP}{reset_label}{RESET}"
 
     old_settings = termios.tcgetattr(sys.stdin)
     try:
@@ -2101,8 +2187,7 @@ def show_usage_principle_demo():
 
                 # Shared header
                 sys.stdout.write(
-                    f"5-hour window  10:00\u201315:00   "
-                    f"now {clock_h}:{clock_m:02d}  ({rh}:{rm:02d} left){CL}\n"
+                    f"5-hour window  10:00\u201315:00   now {clock_h}:{clock_m:02d}  ({rh}:{rm:02d} left){CL}\n"
                 )
 
                 # Fixed 10% usage
@@ -2140,9 +2225,7 @@ def show_usage_principle_demo():
                     intensity = "light"
                 sys.stdout.write(f"{CL}\n")
                 sys.stdout.write(f"{round(cur_usage):2d}% usage — {intensity}{CL}\n")
-                sys.stdout.write(
-                    f"{gauge_line(cur_ratio, cur_remaining_pct, reset_label)}{CL}\n"
-                )
+                sys.stdout.write(f"{gauge_line(cur_ratio, cur_remaining_pct, reset_label)}{CL}\n")
 
                 sys.stdout.flush()
                 delay = 1.0 if t == 0 else 0.1
@@ -2170,10 +2253,10 @@ def main():
     if THEME not in THEMES:
         # Yellow text on red bg, then red text on yellow bg
         print(
-            f"\033[48;5;196m\033[38;5;220m\033[1m PLEASE SET THEME to 'dark' or 'light' in claude-code-status-line.py \033[0m"
+            "\033[48;5;196m\033[38;5;220m\033[1m PLEASE SET THEME to 'dark' or 'light' in claude-code-status-line.py \033[0m"
         )
         print(
-            f"\033[48;5;220m\033[38;5;196m\033[1m PLEASE SET THEME to 'dark' or 'light' in claude-code-status-line.py \033[0m"
+            "\033[48;5;220m\033[38;5;196m\033[1m PLEASE SET THEME to 'dark' or 'light' in claude-code-status-line.py \033[0m"
         )
         return
 
@@ -2259,6 +2342,7 @@ def main():
             update_info=update_info,
             added_dirs=added_dirs,
             worktree=worktree,
+            data=data,
         )
     )
 
@@ -2270,10 +2354,7 @@ def main():
             yellow_rgb, yellow_fb = theme["usage_yellow"]
             color = _color(yellow_rgb, yellow_fb, is_bg=False)
             script_path = get_script_path()
-            print(
-                f"{color}↳ Status line v{statusline_update} available. "
-                f"Update: {script_path} --self-update{RESET}"
-            )
+            print(f"{color}↳ Status line v{statusline_update} available. Update: {script_path} --self-update{RESET}")
 
 
 if __name__ == "__main__":

@@ -27,6 +27,7 @@ A statusline script for [Claude Code](https://docs.anthropic.com/en/docs/claude-
 - **Usage** tracking both 5-hour and 7-day window showing what needs to be known (how much, to when and how much you're burning through them)
 - **Dark and light theme** support (Nord-inspired palette) with option to customize.
 - **Truecolor (24-bit)** with automatic 256-color fallback
+- **Plugin system** for custom segments
 - **Customization of what is shown and how**
 
 ## Installation
@@ -334,6 +335,53 @@ Countdown omits the renewal gap when it rounds to ≤ 1 hour. Color-coded: orang
 ### Truecolor Detection
 
 The script checks the `COLORTERM` environment variable for `truecolor` or `24bit`. If present, it uses 24-bit RGB colors. Otherwise, it falls back to 256-color mode using the fallback values defined in the theme.
+
+## Plugins
+
+Extend the statusline with custom segments by dropping `.py` files into plugin directories:
+
+1. **Project-level:** `.claude/statusline/` (relative to cwd)
+2. **Global:** `~/.claude/statusline/`
+
+Each plugin defines a `register(api)` function that registers one or more segments:
+
+```python
+# ~/.claude/statusline/session.py
+
+def register(api):
+    def render_session(ctx, opts):
+        session_id = ctx["data"].get("session_id", "")
+        if not session_id:
+            return ""
+        short = session_id[:8]
+        color = api.fg("#88C0D0")
+        return f"  {color}{short}{api.RESET}"
+
+    api.add_segment("session", render_session)
+```
+
+Enable the segment via `SL_SEGMENTS`:
+
+```
+SL_SEGMENTS="model progress_bar percentage session directory git_branch"
+```
+
+### Plugin API
+
+| Method | Description |
+|---|---|
+| `api.add_segment(name, renderer, defaults=None)` | Register a segment. `renderer(ctx, opts) -> str` |
+| `api.fg(color)` | Foreground ANSI code. `"#RRGGBB"` (truecolor with 256 fallback) or `int` (256-color) |
+| `api.bg(color)` | Background ANSI code. Same formats |
+| `api.text_color(key)` | Themed text color by key (e.g. `"percent"`, `"cwd"`, `"git"`) |
+| `api.RESET` | ANSI reset escape |
+| `api.BOLD` | ANSI bold escape |
+
+The `ctx` dict passed to renderers includes all standard fields (model, cwd, pct, tokens, usage data) plus `data` — the raw JSON input from Claude Code, giving access to `session_id`, `cwd`, and other fields.
+
+The `opts` dict contains per-segment options from `SL_SEGMENTS` colon syntax (e.g. `session:short=1` → `opts = {"short": "1"}`). Use `defaults` in `add_segment()` to set fallback values.
+
+Plugin errors are silently ignored — a broken plugin never breaks the statusline.
 
 ## Contributing
 
