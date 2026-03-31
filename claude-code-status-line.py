@@ -35,7 +35,7 @@ import time
 import tty
 from datetime import UTC, datetime
 
-VERSION = "5.1.0"
+VERSION = "5.2.0"
 
 # =============================================================================
 # CONFIGURATION — override any setting via environment variables (SL_ prefix)
