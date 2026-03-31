@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.2.0] - 2026-03-31
+
+### Added
+- **Plugin system** for custom segments. Auto-discovers `.py` files in
+  `.claude/statusline/` (project-level) and `~/.claude/statusline/` (global).
+  Each plugin defines `register(api)` where `api` provides `add_segment()`,
+  `fg()`, `bg()`, `text_color()`, `RESET`, `BOLD`. Registered segments become
+  valid in `SL_SEGMENTS`. Plugin errors are silently ignored. The `ctx` dict
+  passed to renderers includes `data` (raw JSON from Claude Code stdin) so
+  plugins can access `session_id`, `cwd`, and other fields.
+
 ## [5.1.0] - 2026-03-21
 
 ### Added

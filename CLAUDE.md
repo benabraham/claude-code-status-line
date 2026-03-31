@@ -34,23 +34,24 @@ echo '{"model":"claude-sonnet-4-20250514","cwd":"/tmp","contextWindow":{"used_pe
 
 The script is a single pipeline: **JSON stdin → parse → compute → render ANSI line → stdout**.
 
-Key sections in `claude-code-status-line.py` (~2,200 lines):
+Key sections in `claude-code-status-line.py` (~2,350 lines):
 
 - **Lines 34-115**: Configuration — `SL_THEME`/`SL_USAGE_CACHE_DURATION`/`SL_UPDATE_CACHE_DURATION`/`SL_UPDATE_RETRY_DURATION`/`SL_UPDATE_CUSTOM_RETRY_DURATION`/`SL_UPDATE_VERSION_CMD`/`SL_UPDATE_VERSION_SOURCE`/`SL_THEME_FILE` globals, then `SL_SEGMENTS` parsing (`_parse_segments`, `_has_segment`, `_segment_opts`). Width values capped at 128.
 - **Lines ~116-165**: Color conversion (`hex_to_rgb`, `hex_to_256`) with hex length validation, and truecolor/256-color terminal detection via `COLORTERM` env var
 - **Lines ~170-355**: Theme system — `THEMES` dict (dark/light, Nord-inspired), `_load_custom_theme()` loads optional `~/.claude/claude-code-theme.toml` via `tomllib`
-- **Lines ~468**: `get_git_branch()` — subprocess call to `git branch --show-current`, strips ESC characters from output
-- **Lines ~497**: `get_git_status()` — collects working directory state (staged/modified/deleted/renamed/untracked/conflicted), stash count, and ahead/behind status via `git status --porcelain=v1`, `git stash list`, and `git rev-list`
-- **Lines ~571**: `_normalize_usage_data()` — converts CC 2.1.80+ `rate_limits` stdin JSON (unix timestamps, float percentages) to internal format (ISO 8601, utilization). `fetch_usage_data()` (deprecated) — OAuth API fallback for older CC versions, cached atomically to `~/.claude/.usage_cache.json`
-- **Lines ~639-746**: Update checker — `get_installed_version()` runs `claude --version`, `fetch_latest_version()` queries npm registry with caching to `~/.claude/.update_cache.json`, `check_for_update()` compares versions via `parse_semver()`
-- **Lines ~749-870**: Usage gauge rendering — vertical (block chars ▁▂▃▄▅▆▇█) and horizontal blocks styles with forward-looking ratio logic
-- **Lines ~872**: `format_usage_indicators()` — returns dict with per-window usage strings
-- **Lines ~1183**: `_format_duration()` / `_format_duration_compact()` — round durations for burndown; default uses rounded single-unit (`3 d`, `8 h`), compact uses compound no-space form (`5d2h30m`)
-- **Lines ~1228**: `_format_burndown()` — three-mode burndown message with `verbosity` param (`default`/`short`): Soon (<1h to depletion), Pace (>=48h, shows pace warning), Countdown (<48h, shows absolute time left)
-- **Lines ~1125-1220**: Segment renderers — `_render_model`, `_render_progress_bar`, `_render_percentage`, `_render_tokens`, `_render_directory`, `_render_added_dirs`, `_render_worktree`, `_render_git_branch`, `_render_git_status`, `_render_usage_5hour`, `_render_usage_weekly`, `_render_usage_burndown`, `_render_update`, `_render_new_line` + `SEGMENT_RENDERERS` dict
-- **Lines ~1530**: `_join_parts()` — joins segment parts with newline-aware flush-left behavior for multi-line layouts
-- **Lines ~1547**: `build_progress_bar()` — builds ctx dict, iterates SEGMENTS calling renderers, uses `_join_parts`
-- **Lines ~2086**: `main()` — entry point, handles demo modes and normal stdin flow
+- **Lines ~514**: `get_git_branch()` — subprocess call to `git branch --show-current`, strips ESC characters from output
+- **Lines ~534**: `get_git_status()` — collects working directory state (staged/modified/deleted/renamed/untracked/conflicted), stash count, and ahead/behind status via `git status --porcelain=v1`, `git stash list`, and `git rev-list`
+- **Lines ~620**: `_normalize_usage_data()` — converts CC 2.1.80+ `rate_limits` stdin JSON (unix timestamps, float percentages) to internal format (ISO 8601, utilization). `fetch_usage_data()` (deprecated) — OAuth API fallback for older CC versions, cached atomically to `~/.claude/.usage_cache.json`
+- **Lines ~760-1000**: Update checker — `get_installed_version()` runs `claude --version`, `fetch_latest_version()` queries npm registry with caching to `~/.claude/.update_cache.json`, `check_for_update()` compares versions via `parse_semver()`
+- **Lines ~1080-1160**: Usage gauge rendering — vertical (block chars ▁▂▃▄▅▆▇█) and horizontal blocks styles with forward-looking ratio logic
+- **Lines ~1212**: `_format_duration()` / `_format_duration_compact()` — round durations for burndown; default uses rounded single-unit (`3 d`, `8 h`), compact uses compound no-space form (`5d2h30m`)
+- **Lines ~1256**: `_format_burndown()` — three-mode burndown message with `verbosity` param (`default`/`short`): Soon (<1h to depletion), Pace (>=48h, shows pace warning), Countdown (<48h, shows absolute time left)
+- **Lines ~1301**: `format_usage_indicators()` — returns dict with per-window usage strings
+- **Lines ~1460-1650**: Segment renderers — `_render_model`, `_render_progress_bar`, `_render_percentage`, `_render_tokens`, `_render_directory`, `_render_added_dirs`, `_render_worktree`, `_render_git_branch`, `_render_git_status`, `_render_usage_5hour`, `_render_usage_weekly`, `_render_usage_burndown`, `_render_update`, `_render_new_line` + `SEGMENT_RENDERERS` dict
+- **Lines ~1673-1765**: Plugin system — `_PluginAPI` class, `_load_plugins()` discovers `.py` files in `.claude/statusline/` (project) and `~/.claude/statusline/` (global)
+- **Lines ~1773**: `_join_parts()` — joins segment parts with newline-aware flush-left behavior for multi-line layouts
+- **Lines ~1790**: `build_progress_bar()` — builds ctx dict, iterates SEGMENTS calling renderers, uses `_join_parts`
+- **Lines ~2251**: `main()` — entry point, handles demo modes and normal stdin flow
 
 ## Code Patterns
 
