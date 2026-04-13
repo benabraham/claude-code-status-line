@@ -199,7 +199,7 @@ With this configuration:
 
 Create `~/.claude/claude-code-theme.toml` (or set `SL_THEME_FILE` to a custom path) to override any colors without modifying the script. Define only the colors you want to change — everything else inherits from the base theme (`dark` or `light`).
 
-Requires Python 3.11+ (for `tomllib`). Use hex colors only. The 256-color terminal fallbacks are computed automatically.
+Requires Python 3.11+ for `tomllib` (stdlib), or install the `tomli` package on Python 3.10. Use hex colors only. The 256-color terminal fallbacks are computed automatically.
 
 ```toml
 # ~/.claude/claude-code-theme.toml

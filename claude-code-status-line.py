@@ -33,7 +33,7 @@ import tempfile
 import termios
 import time
 import tty
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 VERSION = "5.2.0"
 
@@ -127,7 +127,7 @@ def _dump_input(data):
     try:
         entry = json.dumps(
             {
-                "timestamp": datetime.now(UTC).isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "input": data,
             }
         )
@@ -634,7 +634,7 @@ def _normalize_usage_data(rate_limits):
         resets_at = window.get("resets_at")
         if used_pct is None or resets_at is None:
             continue
-        reset_dt = datetime.fromtimestamp(resets_at, tz=UTC)
+        reset_dt = datetime.fromtimestamp(resets_at, tz=timezone.utc)
         result[key] = {
             "utilization": used_pct,
             "resets_at": reset_dt.isoformat(),
@@ -1337,12 +1337,12 @@ def format_usage_indicators(usage_data):
         try:
             reset_dt = datetime.fromisoformat(resets_at.replace("Z", "+00:00"))
             if reset_dt.tzinfo is None:
-                reset_dt = reset_dt.replace(tzinfo=UTC)
+                reset_dt = reset_dt.replace(tzinfo=timezone.utc)
         except ValueError:
             results[segment_name] = ""
             continue
 
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         remaining_pct = max(0, int(100 - utilization_pct))
         reset_label = reset_dt.astimezone().strftime(time_fmt)
 
