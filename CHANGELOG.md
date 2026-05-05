@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.2.1] - 2026-05-05
+
+### Fixed
+- Python 3.10 compatibility: replaced `datetime.UTC` (3.11+) with
+  `datetime.timezone.utc` (available since 3.2). The script now runs on
+  Python 3.10 (e.g. the default interpreter on Ubuntu 22.04 LTS). README
+  updated to note the `tomli` fallback for custom themes on 3.10.
+
 ## [5.2.0] - 2026-03-31
 
 ### Added
