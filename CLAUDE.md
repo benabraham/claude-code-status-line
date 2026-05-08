@@ -2,6 +2,11 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## To do
+
+- [ ] New feature available: Git Worktrees: The status line JSON now includes workspace.git_worktree when inside a linked worktree.
+
+
 ## Project Overview
 
 Single-file Python statusline script for Claude Code CLI. Displays context window usage, model info, budget tracking, git status, and update notifications as a colored status bar (single or multi-line). Stdlib only (json, os, subprocess, sys, tempfile, time, datetime). Custom themes require `tomllib` (Python 3.11+ stdlib) or optional `tomli` package.
