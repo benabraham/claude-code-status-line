@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.3.0] - 2026-05-08
+
+### Changed
+- **Effort level detection** now reads the live value from stdin `effort.level`
+  (CC 2.1.119+), the canonical source. Replaces the previous workaround that
+  read from settings files. Effort badge now correctly reflects mid-session
+  `/effort` changes (including `max`) and is omitted entirely on models without
+  effort support.
+- `model:effort=short` now renders `L/M/H/X/MAX` (was `L/M/H/A` plus first-letter
+  fallback for unknown values). `xhigh` is `X`, `max` is `MAX`.
+- `model:effort=full` now renders `low/medium/high/xhigh/max` (was
+  `low/medium/high/auto`). `auto` no longer appears — Claude Code resolves it to
+  a concrete level (auto means "use model default", not a runtime mode).
+
+### Removed
+- `CLAUDE_CODE_EFFORT_LEVEL` env var override (workaround no longer needed —
+  stdin provides the live level).
+- Settings-file fallback for effort detection (`.claude/settings.json` etc.).
+
 ## [5.2.1] - 2026-05-05
 
 ### Fixed
