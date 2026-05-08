@@ -478,24 +478,14 @@ def text_color(key):
     return fg_themed(color_tuple)
 
 
-def get_effort_level():
-    """Get reasoning effort level from settings with precedence."""
-    env_val = os.environ.get("CLAUDE_CODE_EFFORT_LEVEL", "")
-    if env_val:
-        return env_val.lower()
-    for path in [
-        os.path.join(".claude", "settings.local.json"),
-        os.path.join(".claude", "settings.json"),
-        os.path.expanduser("~/.claude/settings.json"),
-    ]:
-        try:
-            with open(path) as f:
-                val = json.load(f).get("effortLevel", "")
-            if val:
-                return val.lower()
-        except (OSError, json.JSONDecodeError, KeyError):
-            pass
-    return "auto"
+def get_effort_level(data):
+    """Get reasoning effort level from stdin JSON (CC 2.1.119+).
+
+    Returns "" when the model doesn't support effort (field absent).
+    Never returns "auto" — CC always resolves to a concrete level
+    (auto means "use model default", not a runtime mode).
+    """
+    return ((data or {}).get("effort") or {}).get("level", "")
 
 
 # =============================================================================
@@ -1453,10 +1443,10 @@ def format_usage_indicators(usage_data):
 def _render_model(ctx, opts):
     label = ctx["model"]
     effort = opts.get("effort", "")
-    if effort in ("short", "full"):
-        level = ctx.get("effort_level", "auto")
+    level = ctx.get("effort_level", "")
+    if effort in ("short", "full") and level:
         if effort == "short":
-            label = f"{label} {SHORT_EFFORT.get(level, level[0].upper() if level else '?')}"
+            label = f"{label} {SHORT_EFFORT.get(level, level[0].upper())}"
         else:
             label = f"{label} {level}"
     return ctx["model_color"] + center_text(label) + RESET
@@ -1625,7 +1615,7 @@ def _render_new_line(ctx, opts):
     return "\n"
 
 
-SHORT_EFFORT = {"low": "L", "medium": "M", "high": "H", "auto": "A", "max": "max"}
+SHORT_EFFORT = {"low": "L", "medium": "M", "high": "H", "xhigh": "X", "max": "MAX"}
 
 
 SEGMENT_RENDERERS = {
@@ -1856,7 +1846,7 @@ def build_progress_bar(
         "update_info": update_info,
         "added_dirs": added_dirs or [],
         "worktree": worktree,
-        "effort_level": get_effort_level(),
+        "effort_level": get_effort_level(data),
         "data": data or {},
     }
 
