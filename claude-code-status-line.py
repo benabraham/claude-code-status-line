@@ -199,6 +199,7 @@ THEMES = {
         "model_sonnet": (("#A3BE8C", 108), ("#2E3440", 236)),  # nord14 bg, nord0 fg
         "model_opus": (("#88C0D0", 110), ("#2E3440", 236)),  # nord8 bg, nord0 fg
         "model_haiku": (("#4C566A", 60), ("#ECEFF4", 255)),  # nord3 bg, nord6 fg
+        "model_fable": (("#BF616A", 131), ("#2E3440", 236)),  # nord11 red bg, nord0 fg
         "model_default": (("#D8DEE9", 253), ("#2E3440", 236)),  # nord4 bg, nord0 fg
         # Unused portion of progress bar
         "bar_empty": ("#292c33", 234),  # darker than nord0
@@ -238,6 +239,7 @@ THEMES = {
         ),  # muted green bg, white fg
         "model_opus": (("#6AA2B2", 73), ("#FFFFFF", 231)),  # muted aqua bg, white fg
         "model_haiku": (("#8C96AA", 103), ("#FFFFFF", 231)),  # muted grey bg, white fg
+        "model_fable": (("#A8505A", 131), ("#FFFFFF", 231)),  # muted nord11 red bg, white fg
         "model_default": (("#646E82", 66), ("#FFFFFF", 231)),  # slate bg, white fg
         # Unused portion of progress bar
         "bar_empty": ("#D8DEE9", 253),  # nord4
@@ -462,6 +464,8 @@ def get_model_colors(model):
         key = "model_opus"
     elif "Haiku" in model:
         key = "model_haiku"
+    elif "Fable" in model:
+        key = "model_fable"
     else:
         key = "model_default"
 
