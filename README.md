@@ -19,7 +19,7 @@ A statusline script for [Claude Code](https://docs.anthropic.com/en/docs/claude-
 ## Features
 
 - **Update checker** - notifies when a new Claude Code version is available
-- **Model badge** (Opus/Sonnet/Haiku)
+- **Model badge** (Opus/Sonnet/Haiku/Fable)
 - **Context window progress bar and token count with percentage**
 - **Working directory**
 - **Git branch** (hiding main/master as an option)
@@ -107,7 +107,7 @@ Each token is `segment_name` optionally followed by `:key=value` pairs. Unknown 
 | Segment | Description |
 |---|---|
 | `update` | Shows when a new Claude Code version is available |
-| `model` | Model badge (Opus/Sonnet/Haiku) with optional effort level display |
+| `model` | Model badge (Opus/Sonnet/Haiku/Fable) with optional effort level display |
 | `progress_bar` | Context window progress bar |
 | `percentage` | Context usage percentage |
 | `tokens` | Token count (e.g. `84k/200k`) |
@@ -209,6 +209,7 @@ Requires Python 3.11+ for `tomllib` (stdlib), or install the `tomli` package on 
 model_sonnet = ["#50FA7B", "#282A36"]
 model_opus   = ["#BD93F9", "#282A36"]
 model_haiku  = ["#6272A4", "#F8F8F2"]
+model_fable  = ["#FF5555", "#282A36"]
 
 # Progress bar empty fill
 bar_empty = "#44475A"
@@ -244,6 +245,7 @@ gradient = [
 | `model_sonnet` | `["#bg", "#fg"]` | Sonnet model badge |
 | `model_opus` | `["#bg", "#fg"]` | Opus model badge |
 | `model_haiku` | `["#bg", "#fg"]` | Haiku model badge |
+| `model_fable` | `["#bg", "#fg"]` | Fable model badge |
 | `model_default` | `["#bg", "#fg"]` | Fallback model badge |
 | `bar_empty` | `"#hex"` | Empty portion of progress bar |
 | `text_percent` | `"#hex"` | Percentage text |

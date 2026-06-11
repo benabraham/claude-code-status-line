@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.4.0] - 2026-06-11
+
+### Added
+- **Fable model badge color**: the `model` segment now renders a distinct badge
+  for Fable models using Nord red (nord11 `#BF616A` on dark, muted `#A8505A` on
+  light). Previously Fable fell back to the neutral default badge. Customizable
+  via the new `model_fable` theme key.
+
 ## [5.3.0] - 2026-05-08
 
 ### Changed
