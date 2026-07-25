@@ -32,7 +32,9 @@ There is no build step, test suite, or linter. The script is a standalone execut
 ./claude-code-status-line.py --demo-principle
 
 # Normal operation: receives JSON on stdin from Claude Code
-echo '{"model":"claude-sonnet-4-20250514","cwd":"/tmp","contextWindow":{"used_percentage":42}}' | ./claude-code-status-line.py
+# Note: `model` is an object (`display_name`) and the context key is `context_window`.
+# Without `context_window.used_percentage`, main() returns early and prints nothing.
+echo '{"model":{"display_name":"Opus 5"},"cwd":"/tmp","context_window":{"used_percentage":42,"context_window_size":1000000}}' | ./claude-code-status-line.py
 ```
 
 ## Architecture
