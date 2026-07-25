@@ -102,7 +102,7 @@ SL_SEGMENTS="model progress_bar:width=20 percentage tokens directory git_branch 
 
 Each token is `segment_name` optionally followed by `:key=value` pairs. Unknown segment names are silently ignored.
 
-**Default:** `update model progress_bar percentage tokens directory worktree added_dirs git_branch git_status usage_5hour usage_weekly`
+**Default:** `update model progress_bar percentage tokens directory worktree added_dirs git_branch git_status usage_5hour usage_weekly usage_fable`
 
 | Segment | Description |
 |---|---|
@@ -118,6 +118,7 @@ Each token is `segment_name` optionally followed by `:key=value` pairs. Unknown 
 | `git_status` | Git status: `+` staged, `!` modified, `x` deleted, `r` renamed, `?` untracked, `=` conflicted, `$` stashed, `>` ahead, `<` behind, `<>` diverged |
 | `usage_5hour` | 5-hour session usage gauge |
 | `usage_weekly` | 7-day weekly usage gauge |
+| `usage_fable` | Per-model weekly usage gauge, Fable by default. Shows only if your account has a per-model limit; [requires the legacy OAuth API](#per-model-usage-gauge-usage_fable) |
 | `usage_burndown` | Burndown warning adapting to weekly window position (not in defaults) |
 | `new_line` | Insert line break for multi-line layouts (not in defaults) |
 
@@ -136,6 +137,11 @@ Each token is `segment_name` optionally followed by `:key=value` pairs. Unknown 
 | `usage_5hour` | `width` | even integer >= 2 | `4` | Gauge width (invalid values reset to 4) |
 | `usage_weekly` | `gauge` | `vertical`/`blocks`/`none` | `blocks` | Gauge style |
 | `usage_weekly` | `width` | even integer >= 2 | `4` | Gauge width (invalid values reset to 4) |
+| `usage_fable` | `gauge` | `vertical`/`blocks`/`none` | `blocks` | Gauge style |
+| `usage_fable` | `width` | even integer >= 2 | `4` | Gauge width (invalid values reset to 4) |
+| `usage_fable` | `model` | model display name | `Fable` | Which per-model limit to show (matched case-insensitively) |
+| `usage_fable` | `only_current` | `0`/`1` | `0` | Show the gauge only while that model is the active one. Also skips the usage request entirely in other sessions |
+| `usage_fable` | `label` | `full`/`short`/`none` | `full` | Label left of the gauge, so it reads apart from the 5h/7d gauges: `full` = the model name (`Fable`), `short` = its initial (`F`), `none` = no label. Text follows `model=` |
 | `usage_burndown` | `verbosity` | `default`/`short` | `default` | Message style (see burndown section) |
 | `usage_burndown` | `coeff` | float | `1.4` | Relevance filter power curve exponent (see burndown section) |
 | `usage_burndown` | `halftrust` | float (hours) | `16` | Bayesian shrinkage half-trust point (see burndown section) |
@@ -333,6 +339,66 @@ Countdown omits the renewal gap when it rounds to ≤ 1 hour. Color-coded: orang
 **Bayesian shrinkage:** The raw burn rate is noisy early in the weekly window — a small sample gets extrapolated over days. To counter this, the observed burn rate is blended toward the "on-track" rate (100%/168h) using a hyperbolic trust curve: `f = elapsed / (halftrust + elapsed)`. At the half-trust point (default 16h), the blend is 50/50. Early on, the estimate is mostly on-track; as data accumulates, the observation dominates. If the blended rate is at or below on-track, no burndown warning is shown. Configure: `usage_burndown:halftrust=24`.
 
 **Relevance filter:** On top of shrinkage, the burndown is suppressed unless the predicted "sooner" gap exceeds a dynamic minimum: `days_remaining^coeff` hours. With the default `coeff=1.4`, at 6.5 days left the gap must be ≥ ~13 h to show; at 1 day left, ≥ ~1 h. Lower values make it less aggressive, higher values more. Configure: `usage_burndown:coeff=1.2`.
+
+### Per-model usage gauge (`usage_fable`)
+
+Claude Code enforces a separate weekly limit for some models on top of the shared 7-day window — the one `/usage` lists as its own row. `usage_fable` renders that limit with the same gauge, colors, and forward-looking ratio as `usage_5hour` / `usage_weekly`:
+
+```bash
+# Add the Fable weekly gauge after the standard windows
+SL_SEGMENTS='model progress_bar percentage usage_5hour usage_weekly usage_fable'
+
+# Same options as the other usage gauges
+SL_SEGMENTS='... usage_fable:gauge=vertical:width=8'
+
+# Track a different per-model limit instead
+SL_SEGMENTS='... usage_fable:model=Sonnet'
+
+# Only show it while actually running that model (off by default)
+SL_SEGMENTS='... usage_fable:only_current=1'
+
+# Shorten the label to "F", or drop it entirely
+SL_SEGMENTS='... usage_fable:label=short'
+SL_SEGMENTS='... usage_fable:label=none'
+```
+
+Because it shares its shape with the 5h/7d gauges, the segment carries a label to its left — `Fable` by default (`label=full`), `F` with `label=short`, nothing with `label=none`. The text follows `model=`, so `usage_fable:model=Sonnet` labels itself `Sonnet` / `S`:
+
+```
+  ██   94 % → 10:28     ██   83 % → Sat 18:14   Fable ██   77 % → Sat 21:59
+  └─ 5h ────────────┘   └─ weekly ──────────┘   └─ per-model ─────────────┘
+```
+
+`only_current=1` keeps the gauge out of sessions where it isn't relevant — it renders only when the active model matches `model=` (substring, case-insensitive, so `Fable 5 (1M context)` matches `Fable`). It is also the cheaper mode: in non-matching sessions the segment skips the usage request altogether rather than fetching data it won't display. Default is `0` (always show, as long as the limit exists).
+
+Despite the name, the segment is generic: `model=` selects which per-model limit to display, matched case-insensitively against the API's model display name. `Fable` is only the default.
+
+Whether your account has a per-model weekly limit at all depends on your plan and settings; when it doesn't, the segment simply renders nothing. See [Limitations](#limitations) below before enabling it.
+
+#### Limitations
+
+**This segment is on by default, but unlike the other gauges it cannot use the modern data path.** It shows nothing unless your account actually has a per-model limit, so most of the points below are invisible in practice — read them anyway if you care what the status line does behind the scenes, or want to turn it off:
+
+```bash
+# Turn it off: list the segments you want, omitting usage_fable
+SL_SEGMENTS='update model progress_bar percentage tokens directory worktree added_dirs git_branch git_status usage_5hour usage_weekly'
+
+# Or keep it, but only in sessions running that model
+SL_SEGMENTS='... usage_fable:only_current=1'
+```
+
+
+| Limitation | Detail |
+|---|---|
+| **Only appears when your account actually has a per-model cap** | Whether a separate per-model weekly limit exists depends on the account — plan tier (Max), model access, and API/extra-usage settings all play into it, and the rules are Anthropic's to change. This segment deliberately does not try to model them: it is self-gating, rendering only when the API actually returns a matching per-model limit, and staying silently empty otherwise. The API response carries no plan/tier field, so the limit's presence *is* the only available check. Enabling it on an account without such a cap costs a (cached) request and shows nothing. |
+| **Needs the deprecated OAuth API** | Claude Code's stdin JSON (`rate_limits`) contains only `five_hour` and `seven_day` — verified through CC 2.1.220. It carries **no per-model data at all**. The only source for per-model limits is the legacy OAuth endpoint (`fetch_usage_data()`), which this project otherwise treats as deprecated. |
+| **Will break when that API is removed** | The OAuth path is documented as "will be removed in a future version". When it goes, this segment stops rendering unless Anthropic first exposes per-model limits in stdin. It fails silently (renders nothing) rather than erroring. |
+| **Costs a network request** | Because it is on by default, the status line now makes an OAuth usage fetch even when stdin already supplied the 5h/7d windows — including for accounts that turn out to have no per-model limit. The result is disk-cached for `SL_USAGE_CACHE_DURATION` (default 300 s), so the cost is roughly one request per 5 minutes, not one per render. Remove `usage_fable` from `SL_SEGMENTS` (or set `only_current=1`) and **no** extra request is made. |
+| **Needs credentials** | Reads the OAuth token from the macOS Keychain or `~/.claude/.credentials.json`. Unavailable or expired credentials mean the segment renders nothing. |
+| **Not a fixed API field** | Per-model limits arrive as dynamic `weekly_scoped` entries keyed by `scope.model.display_name`, not as a stable `seven_day_fable` key. A rename on Anthropic's side changes what `model=` must match. |
+| **No burndown** | `usage_burndown` is driven by the shared `seven_day` window only and ignores this segment. |
+
+If the configured model has no scoped limit — wrong name, or a plan without a per-model cap — the segment renders as empty rather than showing an error.
 
 ### Truecolor Detection
 

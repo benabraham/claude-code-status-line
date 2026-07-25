@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.5.0] - 2026-07-25
+
+### Added
+- **`usage_fable` segment**: per-model weekly usage gauge, showing the separate
+  weekly limit that `/usage` lists as its own row. Uses the same gauge styles,
+  colors, and forward-looking ratio as `usage_5hour` / `usage_weekly`, and takes
+  the same `gauge` and `width` options.
+- `usage_fable:model=X` option to track any per-model limit (matched
+  case-insensitively against the API's model display name). `Fable` is the
+  default; the segment itself is generic.
+- `usage_fable:only_current=1` option (default `0`) to show the gauge only while
+  that model is the active one. In non-matching sessions it also skips the usage
+  request entirely, so it costs nothing there.
+- `usage_fable:label=` option (`full`/`short`/`none`, default `full`) labelling
+  the gauge so it reads apart from the identically shaped 5h/7d gauges:
+  `Fable`, `F`, or nothing. The text follows `model=`, so it stays correct
+  when tracking a different model.
+
+### Changed
+- `usage_fable` is included in the **default** segment list. It is self-gating,
+  so it stays invisible on accounts without a per-model weekly limit; remove it
+  from `SL_SEGMENTS` (or set `only_current=1`) to avoid the usage request.
+
+### Notes
+- Whether an account has a per-model weekly limit depends on plan tier, model
+  access, and API/extra-usage settings. The segment does not try to model those
+  rules — it is self-gating, rendering only when the API actually returns a
+  matching per-model limit and staying empty otherwise (the API exposes no
+  plan/tier field, so the limit's presence is the only available check).
+- Claude Code's stdin `rate_limits` carries only `five_hour` and `seven_day` —
+  no per-model data at all, verified live through CC 2.1.220. The only
+  available source is the deprecated OAuth API, so this segment triggers a
+  usage fetch (disk-cached, ~1 request per 5 min) and it will stop rendering
+  when that API is eventually removed. See "Limitations" in the README.
+
 ## [5.4.0] - 2026-06-11
 
 ### Added

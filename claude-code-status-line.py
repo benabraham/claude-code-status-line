@@ -35,7 +35,7 @@ import time
 import tty
 from datetime import datetime, timezone
 
-VERSION = "5.4.0"
+VERSION = "5.5.0"
 
 # =============================================================================
 # CONFIGURATION — override any setting via environment variables (SL_ prefix)
@@ -70,8 +70,11 @@ DUMP_PATH = "/tmp/claude-statusline-dump.jsonl"
 
 # --- Segment system ---
 
-DEFAULT_SEGMENTS = "update model progress_bar percentage tokens directory worktree added_dirs git_branch git_status usage_5hour usage_weekly"
+DEFAULT_SEGMENTS = "update model progress_bar percentage tokens directory worktree added_dirs git_branch git_status usage_5hour usage_weekly usage_fable"
 VALID_SEGMENTS = frozenset(DEFAULT_SEGMENTS.split() + ["new_line", "usage_burndown"])
+
+# Segments sharing the gauge+width option contract (even width, 2..128)
+USAGE_GAUGE_SEGMENTS = ("usage_5hour", "usage_weekly", "usage_fable")
 
 SEGMENT_DEFAULTS = {
     "progress_bar": {"width": "12"},
@@ -80,6 +83,7 @@ SEGMENT_DEFAULTS = {
     "git_branch": {"hide_default": "1"},
     "usage_5hour": {"gauge": "blocks", "width": "4"},
     "usage_weekly": {"gauge": "blocks", "width": "4"},
+    "usage_fable": {"gauge": "blocks", "width": "4", "model": "Fable", "only_current": "0", "label": "full"},
     "worktree": {"show": "name"},
     "usage_burndown": {"coeff": "1.4"},
 }
@@ -106,14 +110,14 @@ def _parse_segments(raw):
         if "width" in opts:
             try:
                 w = int(opts["width"])
-                if name in ("usage_5hour", "usage_weekly"):
+                if name in USAGE_GAUGE_SEGMENTS:
                     if w < 2 or w % 2 != 0 or w > 128:
                         opts["width"] = "4"
                 elif name == "progress_bar":
                     if w < 1 or w > 128:
                         opts["width"] = "12"
             except ValueError:
-                opts["width"] = "4" if name in ("usage_5hour", "usage_weekly") else "12"
+                opts["width"] = "4" if name in USAGE_GAUGE_SEGMENTS else "12"
         result.append((name, opts))
     return result
 
@@ -634,6 +638,43 @@ def _normalize_usage_data(rate_limits):
             "resets_at": reset_dt.isoformat(),
         }
     return result or None
+
+
+def _model_matches(model_label, wanted):
+    """True when the active model label refers to `wanted` (e.g. "Fable").
+
+    Substring match to mirror get_model_colors(), so "Fable 5 (1M context)"
+    still matches "Fable". Case-insensitive.
+    """
+    if not model_label or not wanted:
+        return False
+    return wanted.strip().lower() in model_label.lower()
+
+
+def _extract_scoped_usage(data, model_name):
+    """Extract a per-model weekly limit from the OAuth usage response.
+
+    Per-model limits are NOT flat keys — they arrive as dynamic entries in
+    data["limits"] with kind == "weekly_scoped", identified by
+    scope.model.display_name (e.g. "Fable"). Returns internal usage format
+    {utilization, resets_at} or None when the model has no scoped limit.
+    """
+    if not data or not model_name:
+        return None
+    wanted = model_name.strip().lower()
+    for entry in data.get("limits") or []:
+        if not isinstance(entry, dict) or entry.get("kind") != "weekly_scoped":
+            continue
+        scope = entry.get("scope") or {}
+        model = (scope.get("model") or {}).get("display_name") or ""
+        if model.strip().lower() != wanted:
+            continue
+        percent = entry.get("percent")
+        resets_at = entry.get("resets_at")
+        if percent is None or not resets_at:
+            return None
+        return {"utilization": percent, "resets_at": resets_at}
+    return None
 
 
 def get_oauth_token():
@@ -1296,17 +1337,20 @@ def format_usage_indicators(usage_data):
     """Format usage indicators, returning dict of {segment_name: rendered_string}."""
     if usage_data is None:
         na_text = f"   {text_color('na')}usage: N/A"
-        return {"usage_5hour": na_text, "usage_weekly": ""}
+        return {"usage_5hour": na_text, "usage_weekly": "", "usage_fable": ""}
     if not usage_data:
-        return {"usage_5hour": "", "usage_weekly": ""}
+        return {"usage_5hour": "", "usage_weekly": "", "usage_fable": ""}
 
     results = {}
 
     # Define limit types: (api_key, window_hours, time_format, segment_name)
     # Use NBSP (\u00a0) between day and time for weekly
+    # seven_day_fable shares the weekly window; it is populated only when the
+    # OAuth API supplies a scoped limit (see _extract_scoped_usage).
     limit_configs = [
         ("five_hour", 5, "%H:%M", "usage_5hour"),
         ("seven_day", 7 * 24, "%a\u00a0%H:%M", "usage_weekly"),
+        ("seven_day_fable", 7 * 24, "%a\u00a0%H:%M", "usage_fable"),
     ]
 
     for api_key, window_hours, time_fmt, segment_name in limit_configs:
@@ -1424,9 +1468,21 @@ def format_usage_indicators(usage_data):
         else:
             gauge = get_usage_gauge(ratio)
         gauge_part = f"{gauge}\u00a0" if gauge else ""
-        results[segment_name] = f"   {gauge_part}{color}{remaining_pct}\u00a0%\u00a0→\u00a0{reset_label}"
+        # Optional label left of the gauge, so same-shaped gauges read apart.
+        # Text comes from the segment's model= option, so it stays generic:
+        # full -> "Fable", short -> "F", none -> omitted. NBSP keeps it glued.
+        label_mode = opts.get("label", "none")
+        label_src = opts.get("model", "")
+        if label_mode == "full":
+            label = label_src
+        elif label_mode == "short":
+            label = label_src[:1]
+        else:
+            label = ""
+        label_part = f"{color}{label}\u00a0" if label else ""
+        results[segment_name] = f"   {label_part}{gauge_part}{color}{remaining_pct}\u00a0%\u00a0→\u00a0{reset_label}"
 
-    for seg in ("usage_5hour", "usage_weekly"):
+    for seg in USAGE_GAUGE_SEGMENTS:
         if seg not in results:
             results[seg] = ""
 
@@ -1583,6 +1639,20 @@ def _render_usage_weekly(ctx, opts):
     return ctx.get("usage_weekly", "")
 
 
+def _render_usage_fable(ctx, opts):
+    """Per-model weekly usage (default: Fable).
+
+    On by default, but self-gating: renders empty unless the OAuth API supplied a
+    matching weekly_scoped limit, which only exists for accounts that have a
+    per-model cap. CC's stdin rate_limits carries only five_hour/seven_day, with
+    no per-model data, so that limit can come from the OAuth path alone.
+    With only_current=1, also hides the gauge unless that model is the active one.
+    """
+    if opts.get("only_current", "0") == "1" and not _model_matches(ctx.get("model", ""), opts.get("model", "Fable")):
+        return ""
+    return ctx.get("usage_fable", "")
+
+
 def _render_usage_burndown(ctx, opts):
     burndown = ctx.get("usage_weekly_burndown", "")
     if not burndown:
@@ -1634,6 +1704,7 @@ SEGMENT_RENDERERS = {
     "git_status": _render_git_status,
     "usage_5hour": _render_usage_5hour,
     "usage_weekly": _render_usage_weekly,
+    "usage_fable": _render_usage_fable,
     "usage_burndown": _render_usage_burndown,
     "update": _render_update,
     "new_line": _render_new_line,
@@ -1789,6 +1860,7 @@ def build_progress_bar(
     context_limit,
     usage_5hour="",
     usage_weekly="",
+    usage_fable="",
     usage_weekly_burndown="",
     usage_weekly_burndown_color="",
     update_info=None,
@@ -1845,6 +1917,7 @@ def build_progress_bar(
         "cwd": cwd,
         "usage_5hour": usage_5hour,
         "usage_weekly": usage_weekly,
+        "usage_fable": usage_fable,
         "usage_weekly_burndown": usage_weekly_burndown,
         "usage_weekly_burndown_color": usage_weekly_burndown_color,
         "update_info": update_info,
@@ -1903,6 +1976,10 @@ def show_usage_demo():
                     "utilization": 5,
                     "resets_at": (now + timedelta(days=5)).isoformat(),
                 },
+                "seven_day_fable": {
+                    "utilization": 8,
+                    "resets_at": (now + timedelta(days=5)).isoformat(),
+                },
             },
         ),
         (
@@ -1916,6 +1993,11 @@ def show_usage_demo():
                 # 14% used, 1d elapsed of 7d -> 86% budget, 86% time left -> ratio = 1.0
                 "seven_day": {
                     "utilization": 14,
+                    "resets_at": (now + timedelta(days=6)).isoformat(),
+                },
+                # Fable scoped weekly tracks the same window, on track too
+                "seven_day_fable": {
+                    "utilization": 20,
                     "resets_at": (now + timedelta(days=6)).isoformat(),
                 },
             },
@@ -1932,6 +2014,11 @@ def show_usage_demo():
                     "utilization": 14,
                     "resets_at": (now + timedelta(days=6)).isoformat(),
                 },
+                # Fable burning faster than the shared weekly window
+                "seven_day_fable": {
+                    "utilization": 55,
+                    "resets_at": (now + timedelta(days=6)).isoformat(),
+                },
             },
         ),
         (
@@ -1945,6 +2032,10 @@ def show_usage_demo():
                 # 60% used, 2d elapsed of 7d -> 40% budget, 71% time left -> ratio = 0.56
                 "seven_day": {
                     "utilization": 60,
+                    "resets_at": (now + timedelta(days=5)).isoformat(),
+                },
+                "seven_day_fable": {
+                    "utilization": 78,
                     "resets_at": (now + timedelta(days=5)).isoformat(),
                 },
             },
@@ -1964,16 +2055,18 @@ def show_usage_demo():
         SEGMENTS = [
             ("usage_5hour", {"gauge": "vertical", "width": "4"}),
             ("usage_weekly", {"gauge": "vertical", "width": "4"}),
+            ("usage_fable", {"gauge": "vertical", "width": "4"}),
         ]
         parts = format_usage_indicators(mock_data)
-        vertical = parts["usage_5hour"] + parts["usage_weekly"]
+        vertical = parts["usage_5hour"] + parts["usage_weekly"] + parts["usage_fable"]
         # Temporarily set blocks gauge for demo
         SEGMENTS = [
             ("usage_5hour", {"gauge": "blocks", "width": "4"}),
             ("usage_weekly", {"gauge": "blocks", "width": "4"}),
+            ("usage_fable", {"gauge": "blocks", "width": "4"}),
         ]
         parts = format_usage_indicators(mock_data)
-        blocks = parts["usage_5hour"] + parts["usage_weekly"]
+        blocks = parts["usage_5hour"] + parts["usage_weekly"] + parts["usage_fable"]
         print(f"{name}:")
         print(f"  vertical:{vertical}{RESET}")
         print(f"  blocks:  {blocks}{RESET}")
@@ -2313,10 +2406,34 @@ def main():
 
     # Get usage limits indicators (prefer stdin from CC 2.1.80+, fallback to OAuth API)
     rate_limits = data.get("rate_limits")
+    oauth_data = None
+    oauth_tried = False
     if rate_limits:
         usage_data = _normalize_usage_data(rate_limits)
     else:
-        usage_data = fetch_usage_data()  # Deprecated: will be removed in a future version
+        oauth_data = fetch_usage_data()  # Deprecated: will be removed in a future version
+        oauth_tried = True
+        usage_data = oauth_data
+
+    # Per-model usage is absent from stdin rate_limits, so usage_fable has to go
+    # to the OAuth API even when stdin already supplied the 5h/7d windows. Only
+    # pay that cost when the segment is actually enabled (result is disk-cached).
+    # Track "tried" rather than "is None" so an offline fetch is not retried here.
+    fable_opts = _segment_opts("usage_fable")
+    fable_model = fable_opts.get("model", "Fable")
+    # only_current=1 restricts the gauge to sessions actually running that model;
+    # skip the fetch too, so an inactive model costs nothing.
+    fable_wanted = _has_segment("usage_fable") and (
+        fable_opts.get("only_current", "0") != "1" or _model_matches(model, fable_model)
+    )
+    if fable_wanted:
+        if not oauth_tried:
+            oauth_data = fetch_usage_data()
+        scoped = _extract_scoped_usage(oauth_data, fable_model)
+        if scoped:
+            usage_data = dict(usage_data or {})
+            usage_data["seven_day_fable"] = scoped
+
     usage_parts = format_usage_indicators(usage_data)
 
     # Check for updates
@@ -2331,6 +2448,7 @@ def main():
             context_limit,
             usage_5hour=usage_parts["usage_5hour"],
             usage_weekly=usage_parts["usage_weekly"],
+            usage_fable=usage_parts.get("usage_fable", ""),
             usage_weekly_burndown=usage_parts.get("weekly_burndown", ""),
             usage_weekly_burndown_color=usage_parts.get("weekly_burndown_color", ""),
             update_info=update_info,
