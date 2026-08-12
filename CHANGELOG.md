@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.6.0] - 2026-08-12
+
+### Added
+- **`SL_USAGE_DEADLINE`**: personal deadline to pace usage against instead of the
+  API reset, for when your week ends before the window does (e.g. you stop Friday
+  noon but the weekly limit resets Saturday 22:00). Absolute ISO 8601, local time
+  unless an offset is given: `SL_USAGE_DEADLINE='2026-08-14T12:00'`.
+  - Applies to every usage window whose reset falls after it, and moves all three
+    things the window end feeds: the `→` reset label, the forward-looking gauge
+    ratio and its color, and the burndown projection.
+  - An overridden end is shown in square brackets — `→ [Fri 12:00]` — so it never
+    reads as an API reset.
+  - Only the window *end* moves — usage still accumulates from the real window
+    start, so the observed burn rate stays honest.
+  - Burndown wording switches from `to renew` to `to stop` while the override is
+    active, since budget does not renew at your deadline; the Soon message drops
+    the renewal reference (`may run out soon but 119 m to stop`).
+  - Ignored once in the past, beyond the API reset, or unparseable — the API value
+    is the automatic fallback, so a stale deadline needs no cleanup.
+
+---
+
 ## [5.5.0] - 2026-07-25
 
 ### Added

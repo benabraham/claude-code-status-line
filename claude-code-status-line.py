@@ -68,6 +68,26 @@ THEME_FILE = _env_str("THEME_FILE", os.path.expanduser("~/.claude/claude-code-th
 DUMP = _env_str("DUMP", "")
 DUMP_PATH = "/tmp/claude-statusline-dump.jsonl"
 
+
+def _parse_usage_deadline(raw):
+    """Parse SL_USAGE_DEADLINE into an aware datetime, or None when unset/invalid.
+
+    Absolute ISO 8601 only: '2026-08-14T12:00', '2026-08-14 12:00', optional
+    offset. Naive values are read as local time. Once it is in the past the
+    override stops applying, so a stale value never needs clearing.
+    """
+    if not raw:
+        return None
+    try:
+        dt = datetime.fromisoformat(raw.strip().replace("Z", "+00:00"))
+    except (ValueError, AttributeError):
+        return None
+    return dt.astimezone() if dt.tzinfo is None else dt
+
+
+# Personal horizon: pace usage against this instant instead of the API reset.
+USAGE_DEADLINE = _parse_usage_deadline(_env_str("USAGE_DEADLINE", ""))
+
 # --- Segment system ---
 
 DEFAULT_SEGMENTS = "update model progress_bar percentage tokens directory worktree added_dirs git_branch git_status usage_5hour usage_weekly usage_fable"
@@ -1288,7 +1308,22 @@ def _format_duration_compact(seconds):
     return "".join(parts)
 
 
-def _format_burndown(seconds_to_depletion, seconds_early, seconds_until_reset, verbosity="default"):
+def _effective_window_end(reset_dt, now):
+    """Window end used for pacing: (end_dt, deadline_active).
+
+    SL_USAGE_DEADLINE replaces the API reset when it lands inside the window
+    still ahead of us — the horizon you actually work to. A deadline in the
+    past or beyond the reset is ignored, so the API value is the automatic
+    fallback and a stale override needs no cleanup.
+    """
+    if USAGE_DEADLINE is None:
+        return reset_dt, False
+    if USAGE_DEADLINE <= now or USAGE_DEADLINE >= reset_dt:
+        return reset_dt, False
+    return USAGE_DEADLINE, True
+
+
+def _format_burndown(seconds_to_depletion, seconds_early, seconds_until_end, verbosity="default", to_stop=False):
     """Format burndown message adapting to where user is in the weekly window.
 
     Three modes (default verbosity):
@@ -1298,17 +1333,25 @@ def _format_burndown(seconds_to_depletion, seconds_early, seconds_until_reset, v
 
     Short verbosity uses compact durations (5d2h), ~ instead of about,
     -> instead of then, drops "usage", "out ~" instead of "may run out about".
+
+    to_stop=True means the window end is a personal deadline (SL_USAGE_DEADLINE),
+    not the API reset — budget does not come back there, so "renew" becomes "stop".
     """
     NB = "\u00a0"
     short = verbosity == "short"
     dur = _format_duration_compact if short else _format_duration
+    end_word = "stop" if to_stop else "renew"
 
     if seconds_to_depletion < 3600:
         # Soon mode
-        renew_minutes = int(seconds_until_reset / 60)
+        end_minutes = int(seconds_until_end / 60)
+        if to_stop:
+            if short:
+                return f"out{NB}soon,{NB}{end_minutes}m{NB}to{NB}stop"
+            return f"may{NB}run{NB}out{NB}soon{NB}but{NB}{end_minutes}{NB}m{NB}to{NB}stop"
         if short:
-            return f"out{NB}soon,{NB}renew{NB}{renew_minutes}m{NB}away"
-        return f"may{NB}run{NB}out{NB}soon{NB}but{NB}renew{NB}{renew_minutes}{NB}m{NB}away"
+            return f"out{NB}soon,{NB}renew{NB}{end_minutes}m{NB}away"
+        return f"may{NB}run{NB}out{NB}soon{NB}but{NB}renew{NB}{end_minutes}{NB}m{NB}away"
 
     if seconds_to_depletion >= 172800:
         # Pace mode
@@ -1319,17 +1362,17 @@ def _format_burndown(seconds_to_depletion, seconds_early, seconds_until_reset, v
             return f"out{NB}~{NB}{early}{NB}sooner"
         return f"may{NB}run{NB}out{NB}about{NB}{early}{NB}sooner"
 
-    # Countdown mode — omit renewal gap when early <= 1h
+    # Countdown mode — omit trailing gap when early <= 1h
     depletion = dur(seconds_to_depletion)
     if not depletion:
         return ""
     early = dur(seconds_early) if seconds_early > 3600 else ""
     if short:
         if early:
-            return f"~{NB}{depletion}{NB}left{NB}->{NB}{early}{NB}to{NB}renew"
+            return f"~{NB}{depletion}{NB}left{NB}->{NB}{early}{NB}to{NB}{end_word}"
         return f"~{NB}{depletion}{NB}left"
     if early:
-        return f"about{NB}{depletion}{NB}usage{NB}left{NB}then{NB}{early}{NB}to{NB}renew"
+        return f"about{NB}{depletion}{NB}usage{NB}left{NB}then{NB}{early}{NB}to{NB}{end_word}"
     return f"about{NB}{depletion}{NB}usage{NB}left"
 
 
@@ -1381,14 +1424,22 @@ def format_usage_indicators(usage_data):
             continue
 
         now = datetime.now(timezone.utc)
+        end_dt, deadline_active = _effective_window_end(reset_dt, now)
         remaining_pct = max(0, int(100 - utilization_pct))
-        reset_label = reset_dt.astimezone().strftime(time_fmt)
+        reset_label = end_dt.astimezone().strftime(time_fmt)
+        if deadline_active:
+            # Bracket the time so an overridden end never reads as an API reset.
+            reset_label = f"[{reset_label}]"
 
         # Calculate time elapsed in window
         window_seconds = window_hours * 3600
         window_start = reset_dt.timestamp() - window_seconds
+        # A personal deadline moves only the END of the window — usage still
+        # accumulated from the real start, so the observed rate stays honest
+        # while "how much time is left" shrinks to the horizon you work to.
+        effective_window_seconds = max(1, end_dt.timestamp() - window_start)
         elapsed_seconds = now.timestamp() - window_start
-        time_elapsed_pct = max(0, min(100, (elapsed_seconds / window_seconds) * 100))
+        time_elapsed_pct = max(0, min(100, (elapsed_seconds / effective_window_seconds) * 100))
 
         # Forward-looking ratio: remaining_budget / remaining_time
         remaining_budget_pct = max(0, 100 - utilization_pct)
@@ -1423,16 +1474,16 @@ def format_usage_indicators(usage_data):
             f = elapsed_seconds / (k + elapsed_seconds)
 
             observed_rate = utilization_pct / elapsed_seconds
-            on_track_rate = 100 / window_seconds
+            on_track_rate = 100 / effective_window_seconds
             effective_rate = observed_rate * f + on_track_rate * (1 - f)
 
             remaining_budget = 100 - utilization_pct
             if effective_rate > on_track_rate:
                 seconds_to_depletion = remaining_budget / effective_rate
-                # Time until window resets
-                seconds_until_reset = reset_dt.timestamp() - now.timestamp()
+                # Time until the window ends (deadline when overridden)
+                seconds_until_end = end_dt.timestamp() - now.timestamp()
                 # How much earlier will we run out?
-                seconds_early = seconds_until_reset - seconds_to_depletion
+                seconds_early = seconds_until_end - seconds_to_depletion
                 if seconds_early > 0:
                     # Non-linear relevance filter: require larger "sooner" gap
                     # early in the window when prediction confidence is low.
@@ -1441,15 +1492,16 @@ def format_usage_indicators(usage_data):
                         coeff = float(burndown_opts.get("coeff", "1.4"))
                     except (ValueError, TypeError):
                         coeff = 1.4
-                    days_left = seconds_until_reset / 86400
+                    days_left = seconds_until_end / 86400
                     min_sooner = (days_left**coeff) * 3600 / f
                     if seconds_early >= min_sooner:
                         verbosity = burndown_opts.get("verbosity", "default")
                         burndown_text = _format_burndown(
                             seconds_to_depletion,
                             seconds_early,
-                            seconds_until_reset,
+                            seconds_until_end,
                             verbosity=verbosity,
+                            to_stop=deadline_active,
                         )
                         if burndown_text:
                             results["weekly_burndown"] = burndown_text

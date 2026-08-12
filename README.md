@@ -90,6 +90,7 @@ Alternatively, edit the defaults at the top of the script.
 | `SL_UPDATE_VERSION_SOURCE` | `custom` | Label for custom version source (e.g., `numtide`, `nixpkgs`) |
 | `SL_SHOW_STATUSLINE_UPDATE` | `1` | Show status line update notifications (`0` to disable) |
 | `SL_THEME_FILE` | `~/.claude/claude-code-theme.toml` | Path to custom theme file (see below) |
+| `SL_USAGE_DEADLINE` | (empty) | Personal deadline to pace usage against instead of the API reset (see below) |
 | `SL_DUMP` | (empty) | Set to `1` to log raw stdin JSON to `/tmp/claude-statusline-dump.jsonl` |
 
 ### Segment Order & Options
@@ -339,6 +340,43 @@ Countdown omits the renewal gap when it rounds to ≤ 1 hour. Color-coded: orang
 **Bayesian shrinkage:** The raw burn rate is noisy early in the weekly window — a small sample gets extrapolated over days. To counter this, the observed burn rate is blended toward the "on-track" rate (100%/168h) using a hyperbolic trust curve: `f = elapsed / (halftrust + elapsed)`. At the half-trust point (default 16h), the blend is 50/50. Early on, the estimate is mostly on-track; as data accumulates, the observation dominates. If the blended rate is at or below on-track, no burndown warning is shown. Configure: `usage_burndown:halftrust=24`.
 
 **Relevance filter:** On top of shrinkage, the burndown is suppressed unless the predicted "sooner" gap exceeds a dynamic minimum: `days_remaining^coeff` hours. With the default `coeff=1.4`, at 6.5 days left the gap must be ≥ ~13 h to show; at 1 day left, ≥ ~1 h. Lower values make it less aggressive, higher values more. Configure: `usage_burndown:coeff=1.2`.
+
+### Personal deadline (`SL_USAGE_DEADLINE`)
+
+The API reset is when the budget renews — not necessarily when *you* stop working. If your week ends Friday noon but the weekly window resets Saturday 22:00, everything is paced against a day and a half you will never use.
+
+`SL_USAGE_DEADLINE` moves the window end to your own horizon:
+
+```bash
+export SL_USAGE_DEADLINE='2026-08-14T12:00'   # or '2026-08-14 12:00'
+```
+
+Absolute ISO 8601, local time unless you add an offset. It applies to every usage window whose reset falls *after* it, and affects all three things the window end feeds:
+
+| | Without deadline | With deadline `Fri 12:00` |
+|---|---|---|
+| Reset label | `→ Sat 22:00` | `→ [Fri 12:00]` |
+| Gauge ratio & color | budget vs. time to Sat 22:00 | budget vs. time to Fri 12:00 |
+| Burndown | `about 8 h usage left then 1 d to renew` | `about 8 h usage left then 2 h to stop` |
+
+The overridden time is shown in **square brackets** — `→ [Fri 12:00]` — so an end you chose never reads as an API reset:
+
+```
+deadline off   ▊  28 % → Sat 22:00     F  █▎ 16 % → Sat 22:00
+deadline on    ▎  28 % → [Fri 12:00]   F  █  16 % → [Fri 12:00]
+```
+
+Only the *end* of the window moves. Usage still accumulated from the real window start, so the observed burn rate stays honest — what shrinks is the time you have left to spend the rest. A shorter horizon means the same remaining budget covers proportionally more of it, so a healthy gauge here reads "you have budget to spare before you stop".
+
+Because budget does not actually renew at your deadline, the burndown says **`to stop`** instead of `to renew`, and the Soon message drops the renewal reference entirely:
+
+| Mode | Default | Short |
+|------|---------|-------|
+| Soon | `may run out soon but 119 m to stop` | `out soon, 119m to stop` |
+| Pace | `may run out about 3 d sooner` | `out ~ 3d sooner` |
+| Countdown | `about 8 h usage left then 2 h to stop` | `~ 8h left -> 2h to stop` |
+
+The override is ignored once it is in the past, or if it falls beyond the API reset — both cases fall back to the real reset automatically, so a stale value needs no cleanup. Unparseable values are ignored the same way.
 
 ### Per-model usage gauge (`usage_fable`)
 
