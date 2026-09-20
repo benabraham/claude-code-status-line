@@ -96,6 +96,11 @@ VALID_SEGMENTS = frozenset(DEFAULT_SEGMENTS.split() + ["new_line", "usage_burndo
 # Segments sharing the gauge+width option contract (even width, 2..128)
 USAGE_GAUGE_SEGMENTS = ("usage_5hour", "usage_weekly", "usage_fable")
 
+# Segments needing a context percentage. Claude Code sends
+# context_window.used_percentage = null until the session has an assistant
+# message, so these are dropped on a fresh session rather than inventing 0 %.
+CONTEXT_SEGMENTS = frozenset(("progress_bar", "percentage", "tokens"))
+
 SEGMENT_DEFAULTS = {
     "progress_bar": {"width": "12"},
     "directory": {"basename_only": "0"},
@@ -1893,6 +1898,8 @@ def _join_parts(parts):
     at_line_start = True
     for part in parts:
         if part == "\n":
+            if not output:
+                continue  # nothing rendered yet: no leading blank line
             output += RESET + "\n"
             at_line_start = True
         elif part:
@@ -1921,14 +1928,19 @@ def build_progress_bar(
     data=None,
 ):
     """Build the full status line string"""
+    # pct is None before the first exchange. The bar math still runs on a dummy
+    # 0 so the ctx shape stays uniform; CONTEXT_SEGMENTS are skipped below, so
+    # none of those values reach the output.
+    context_known = pct is not None
+    bar_pct = pct if context_known else 0
     bar_width = max(1, min(128, int(_segment_opts("progress_bar").get("width", "12"))))
-    exact_fill = pct * bar_width / 100
+    exact_fill = bar_pct * bar_width / 100
     filled = int(exact_fill)
     fraction = exact_fill - filled
 
     BLOCKS = " ▏▎▍▌▋▊▉█"  # index 0=empty, 8=full
 
-    bar_rgb, bar_256 = get_colors_for_percentage(pct)
+    bar_rgb, bar_256 = get_colors_for_percentage(bar_pct)
     model_color = get_model_colors(model)
 
     # Token display (may be None if only API percentage available)
@@ -1981,6 +1993,8 @@ def build_progress_bar(
 
     parts = []
     for name, opts in SEGMENTS:
+        if not context_known and name in CONTEXT_SEGMENTS:
+            continue
         renderer = SEGMENT_RENDERERS.get(name)
         if renderer:
             result = renderer(ctx, opts)
@@ -2451,10 +2465,10 @@ def main():
     else:
         total_tokens = None
 
-    # Use API percentage
-    if used_percentage is None:
-        return
-    pct = int(used_percentage)
+    # Use API percentage. None before the first exchange (Claude Code sends
+    # used_percentage = null until an assistant message exists) - keep rendering
+    # the rest of the line, build_progress_bar drops the context segments.
+    pct = int(used_percentage) if used_percentage is not None else None
 
     # Get usage limits indicators (prefer stdin from CC 2.1.80+, fallback to OAuth API)
     rate_limits = data.get("rate_limits")
