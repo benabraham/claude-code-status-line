@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.6.1] - 2026-09-20
+
+### Fixed
+- **Status line no longer blank at session start.** Claude Code derives
+  `context_window.used_percentage` from the last assistant message, so it sends
+  `null` on a fresh session. The script treated that as "no data at all" and
+  printed nothing — no model badge, no directory, no git, no usage gauges —
+  until the first request/response.
+  - The three context segments (`progress_bar`, `percentage`, `tokens`) are now
+    skipped while the percentage is unknown; every other segment renders from
+    the first frame.
+  - No fabricated `0 %` is shown. The system prompt and tool definitions already
+    occupy context and cannot be measured before the API answers, which is why
+    Claude Code reports `null` rather than zero.
+  - The 5-hour and weekly gauges may still be empty for the first render or two
+    while Claude Code's background quota probe resolves, then fill in.
+- Stray leading blank line when a `new_line` segment came before anything that
+  rendered. Deliberate blank separators (two consecutive `new_line` segments)
+  are unaffected.
+
+---
+
 ## [5.6.0] - 2026-08-12
 
 ### Added
