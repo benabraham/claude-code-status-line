@@ -103,7 +103,7 @@ SL_SEGMENTS="model progress_bar:width=20 percentage tokens directory git_branch 
 
 Each token is `segment_name` optionally followed by `:key=value` pairs. Unknown segment names are silently ignored.
 
-**Default:** `update model progress_bar percentage tokens directory worktree added_dirs git_branch git_status usage_5hour usage_weekly usage_fable`
+**Default:** `update model progress_bar percentage tokens directory worktree added_dirs git_branch git_status usage_5hour usage_weekly usage_fable cost`
 
 | Segment | Description |
 |---|---|
@@ -120,6 +120,7 @@ Each token is `segment_name` optionally followed by `:key=value` pairs. Unknown 
 | `usage_5hour` | 5-hour session usage gauge |
 | `usage_weekly` | 7-day weekly usage gauge |
 | `usage_fable` | Per-model weekly usage gauge, Fable by default. Shows only if your account has a per-model limit; [requires the legacy OAuth API](#per-model-usage-gauge-usage_fable) |
+| `cost` | Session cost in USD (e.g. `$1.23`), subagents included. Claude Code's estimate at API list prices, same as `/cost`; not what a subscription bills |
 | `usage_burndown` | Burndown warning adapting to weekly window position (not in defaults) |
 | `new_line` | Insert line break for multi-line layouts (not in defaults) |
 
@@ -262,6 +263,7 @@ gradient = [
 | `text_na` | `"#hex"` | N/A indicator text |
 | `text_added_dirs` | `"#hex"` | Added directories text |
 | `text_worktree` | `"#hex"` | Worktree info text |
+| `text_cost` | `"#hex"` | Session cost text |
 | `usage_light` | `"#hex"` | Usage gauge: well ahead |
 | `usage_green` | `"#hex"` | Usage gauge: on track |
 | `usage_yellow` | `"#hex"` | Usage gauge: faster than sustainable |
@@ -419,7 +421,7 @@ Whether your account has a per-model weekly limit at all depends on your plan an
 
 ```bash
 # Turn it off: list the segments you want, omitting usage_fable
-SL_SEGMENTS='update model progress_bar percentage tokens directory worktree added_dirs git_branch git_status usage_5hour usage_weekly'
+SL_SEGMENTS='update model progress_bar percentage tokens directory worktree added_dirs git_branch git_status usage_5hour usage_weekly cost'
 
 # Or keep it, but only in sessions running that model
 SL_SEGMENTS='... usage_fable:only_current=1'

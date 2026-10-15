@@ -90,7 +90,7 @@ USAGE_DEADLINE = _parse_usage_deadline(_env_str("USAGE_DEADLINE", ""))
 
 # --- Segment system ---
 
-DEFAULT_SEGMENTS = "update model progress_bar percentage tokens directory worktree added_dirs git_branch git_status usage_5hour usage_weekly usage_fable"
+DEFAULT_SEGMENTS = "update model progress_bar percentage tokens directory worktree added_dirs git_branch git_status usage_5hour usage_weekly usage_fable cost"
 VALID_SEGMENTS = frozenset(DEFAULT_SEGMENTS.split() + ["new_line", "usage_burndown"])
 
 # Segments sharing the gauge+width option contract (even width, 2..128)
@@ -240,6 +240,7 @@ THEMES = {
         "text_na": (("#D08770", None), 173),  # nord12 orange
         "text_added_dirs": (("#4C566A", None), 60),  # nord3 muted gray
         "text_worktree": (("#B48EAD", None), 139),  # nord15 purple
+        "text_cost": (("#8FBCBB", None), 109),  # nord7 teal
         # Usage indicator colors (ratio-based)
         "usage_light": ("#88C0D0", 110),  # nord8 frost - well ahead
         "usage_green": ("#A3BE8C", 108),  # nord14 - on track
@@ -280,6 +281,7 @@ THEMES = {
         "text_na": (("#D08770", None), 173),  # nord12 orange
         "text_added_dirs": (("#7B8394", None), 103),  # medium gray
         "text_worktree": (("#8B6B85", None), 132),  # muted purple
+        "text_cost": (("#3E7A78", None), 66),  # dark teal
         # Usage indicator colors (ratio-based) - darker for light bg
         "usage_light": ("#2B7A78", 30),  # dark teal - well ahead
         "usage_green": ("#4A7C4A", 65),  # dark green - on track
@@ -380,7 +382,7 @@ def _load_custom_theme():
             overrides[key] = (h, hex_to_256(h))
 
     # Text colors: "hex" → (("hex", None), 256)
-    for key in ("text_percent", "text_numbers", "text_cwd", "text_git", "text_na", "text_added_dirs", "text_worktree"):
+    for key in ("text_percent", "text_numbers", "text_cwd", "text_git", "text_na", "text_added_dirs", "text_worktree", "text_cost"):
         if key in ns:
             h = ns[key]
             if not _is_hex(h):
@@ -1719,6 +1721,18 @@ def _render_usage_burndown(ctx, opts):
     return f"   {color}{burndown}{reset}"
 
 
+def _render_cost(ctx, opts):
+    """Session cost in USD, as estimated by Claude Code (cost.total_cost_usd).
+
+    Claude Code sums every priced API call of the session, subagents included,
+    at API list prices, so this matches /cost. It is not what a flat-rate plan bills.
+    """
+    cost = (ctx["data"].get("cost") or {}).get("total_cost_usd")
+    if not isinstance(cost, (int, float)):
+        return ""
+    return f"   {text_color('cost')}${cost:.2f}"
+
+
 def _render_update(ctx, opts):
     update_info = ctx.get("update_info")
     if not update_info:
@@ -1763,6 +1777,7 @@ SEGMENT_RENDERERS = {
     "usage_weekly": _render_usage_weekly,
     "usage_fable": _render_usage_fable,
     "usage_burndown": _render_usage_burndown,
+    "cost": _render_cost,
     "update": _render_update,
     "new_line": _render_new_line,
 }

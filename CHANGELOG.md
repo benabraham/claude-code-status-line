@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **`cost` segment** (on by default): session cost in USD, e.g. `$1.23`.
+  - Reads `cost.total_cost_usd` from Claude Code's stdin JSON, so it includes
+    subagent calls and matches `/cost`.
+  - It is Claude Code's estimate at API list prices, not what a flat-rate plan bills.
+  - Color via the new `text_cost` theme key.
+
+---
+
 ## [5.6.1] - 2026-09-20
 
 ### Fixed
