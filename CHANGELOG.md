@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **`cache_ttl` segment** (not in defaults): minutes until the prompt cache
+  expires, e.g. `cache 42 m`; yellow below `warn` (10 m), red below `crit` (3 m),
+  then `cache expired`.
+  - TTL (1 h or 5 m) is read from the `cache_creation` breakdown of the newest
+    reply that wrote to the cache, so it follows Claude Code's choice per request.
+  - Reads only the tail of `transcript_path` (stdin JSON has no cache data).
+  - Hidden while fewer than `min_tokens` (10k) are cached.
+  - Color via the new `text_cache` theme key. Pair it with `statusLine.refreshInterval`
+    so it ticks between events.
+- **`scratchpad` segment** (not in defaults): clickable OSC 8 link to the session
+  scratchpad, shown once it has files (`always=1`, `label=`).
+- **`directory:link=1`**: makes the working directory a clickable `file://` link.
+
+---
+
 ## [5.7.0] - 2026-10-15
 
 ### Added
