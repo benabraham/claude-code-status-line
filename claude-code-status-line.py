@@ -23,6 +23,7 @@ Note: After initial setup, edits to this script take effect immediately (no rest
 Latest version: https://github.com/benabraham/claude-code-status-line
 """
 
+import glob
 import json
 import os
 import re
@@ -34,6 +35,7 @@ import termios
 import time
 import tty
 from datetime import datetime, timezone
+from urllib.parse import quote
 
 VERSION = "5.7.0"
 
@@ -91,7 +93,7 @@ USAGE_DEADLINE = _parse_usage_deadline(_env_str("USAGE_DEADLINE", ""))
 # --- Segment system ---
 
 DEFAULT_SEGMENTS = "update model progress_bar percentage tokens directory worktree added_dirs git_branch git_status usage_5hour usage_weekly usage_fable cost"
-VALID_SEGMENTS = frozenset(DEFAULT_SEGMENTS.split() + ["new_line", "usage_burndown"])
+VALID_SEGMENTS = frozenset(DEFAULT_SEGMENTS.split() + ["new_line", "usage_burndown", "cache_ttl", "scratchpad"])
 
 # Segments sharing the gauge+width option contract (even width, 2..128)
 USAGE_GAUGE_SEGMENTS = ("usage_5hour", "usage_weekly", "usage_fable")
@@ -103,7 +105,7 @@ CONTEXT_SEGMENTS = frozenset(("progress_bar", "percentage", "tokens"))
 
 SEGMENT_DEFAULTS = {
     "progress_bar": {"width": "12"},
-    "directory": {"basename_only": "0"},
+    "directory": {"basename_only": "0", "link": "0"},
     "added_dirs": {"basename_only": "0", "separator": " • "},
     "git_branch": {"hide_default": "1"},
     "usage_5hour": {"gauge": "blocks", "width": "4"},
@@ -111,6 +113,8 @@ SEGMENT_DEFAULTS = {
     "usage_fable": {"gauge": "blocks", "width": "4", "model": "Fable", "only_current": "0", "label": "full"},
     "worktree": {"show": "name"},
     "usage_burndown": {"coeff": "1.4"},
+    "cache_ttl": {"min_tokens": "10000", "warn": "10", "crit": "3"},
+    "scratchpad": {"always": "0", "label": "scratch"},
 }
 
 
@@ -241,6 +245,7 @@ THEMES = {
         "text_added_dirs": (("#4C566A", None), 60),  # nord3 muted gray
         "text_worktree": (("#B48EAD", None), 139),  # nord15 purple
         "text_cost": (("#8FBCBB", None), 109),  # nord7 teal
+        "text_cache": (("#D8DEE9", None), 253),  # nord4 snow
         # Usage indicator colors (ratio-based)
         "usage_light": ("#88C0D0", 110),  # nord8 frost - well ahead
         "usage_green": ("#A3BE8C", 108),  # nord14 - on track
@@ -282,6 +287,7 @@ THEMES = {
         "text_added_dirs": (("#7B8394", None), 103),  # medium gray
         "text_worktree": (("#8B6B85", None), 132),  # muted purple
         "text_cost": (("#3E7A78", None), 66),  # dark teal
+        "text_cache": (("#4C566A", None), 60),  # nord3 slate
         # Usage indicator colors (ratio-based) - darker for light bg
         "usage_light": ("#2B7A78", 30),  # dark teal - well ahead
         "usage_green": ("#4A7C4A", 65),  # dark green - on track
@@ -382,7 +388,7 @@ def _load_custom_theme():
             overrides[key] = (h, hex_to_256(h))
 
     # Text colors: "hex" → (("hex", None), 256)
-    for key in ("text_percent", "text_numbers", "text_cwd", "text_git", "text_na", "text_added_dirs", "text_worktree", "text_cost"):
+    for key in ("text_percent", "text_numbers", "text_cwd", "text_git", "text_na", "text_added_dirs", "text_worktree", "text_cost", "text_cache"):
         if key in ns:
             h = ns[key]
             if not _is_hex(h):
@@ -1555,6 +1561,137 @@ def format_usage_indicators(usage_data):
 
 
 # =============================================================================
+# PROMPT CACHE, SCRATCHPAD AND TERMINAL LINKS
+# =============================================================================
+
+CACHE_TTL_LONG = 3600  # 1h prompt cache
+CACHE_TTL_SHORT = 300  # 5m prompt cache (API default, also used in usage overage)
+TRANSCRIPT_TAIL_START = 256 * 1024
+TRANSCRIPT_TAIL_MAX = 4 * 1024 * 1024
+CACHE_REPLY_LIMIT = 50
+
+
+def _osc8(url, text):
+    """Wrap text in an OSC 8 hyperlink. Terminals without support print text only."""
+    return f"\033]8;;{url}\033\\{text}\033]8;;\033\\"
+
+
+def _file_url(path):
+    return "file://" + quote(path)
+
+
+def _is_cached_reply(entry):
+    """Main-thread API reply carrying prompt cache usage (no synthetic/error/subagent entries)."""
+    if entry.get("type") != "assistant" or entry.get("isSidechain") or entry.get("isApiErrorMessage"):
+        return False
+    message = entry.get("message")
+    if not isinstance(message, dict) or message.get("model") == "<synthetic>":
+        return False
+    usage = message.get("usage")
+    return isinstance(usage, dict) and usage.get("cache_read_input_tokens") is not None
+
+
+def _recent_cached_replies(transcript_path):
+    """Newest-first assistant replies from the end of a JSONL transcript.
+
+    Stdin JSON carries no prompt cache data, so this is the one place the
+    script reads the transcript. Only a tail window is read (transcripts
+    reach tens of MB, single lines hundreds of KB); it grows 4x while no
+    reply is found, up to TRANSCRIPT_TAIL_MAX.
+    """
+    if not transcript_path:
+        return []
+    try:
+        size = os.path.getsize(transcript_path)
+        with open(transcript_path, "rb") as f:
+            window = TRANSCRIPT_TAIL_START
+            while True:
+                start = max(0, size - window)
+                f.seek(start)
+                lines = f.read(size - start).splitlines()
+                if start > 0:
+                    lines = lines[1:]  # first line is cut mid-JSON
+                replies = []
+                for raw in reversed(lines):
+                    if b'"assistant"' not in raw:
+                        continue
+                    try:
+                        entry = json.loads(raw)
+                    except ValueError:
+                        continue
+                    if isinstance(entry, dict) and _is_cached_reply(entry):
+                        replies.append(entry)
+                        if len(replies) >= CACHE_REPLY_LIMIT:
+                            break
+                if replies or start == 0 or window >= TRANSCRIPT_TAIL_MAX:
+                    return replies
+                window *= 4
+    except OSError:
+        return []
+
+
+def _parse_entry_time(entry):
+    try:
+        return datetime.fromisoformat(entry["timestamp"].replace("Z", "+00:00"))
+    except (KeyError, AttributeError, TypeError, ValueError):
+        return None
+
+
+def get_cache_status(transcript_path):
+    """Return (cached_tokens, seconds_left) for the session's prompt cache, or None.
+
+    TTL: 1h when the newest reply that wrote to the cache wrote 1h entries,
+    otherwise 5m. Claude Code picks the TTL per request (it drops to 5m in
+    usage overage), so it is read from cache_creation instead of configured.
+    The clock starts at the newest API reply; one reply is split into
+    several transcript entries (thinking, text, tool use) sharing
+    message.id, so the earliest of them is used.
+    """
+    replies = _recent_cached_replies(transcript_path)
+    if not replies:
+        return None
+    usage = replies[0]["message"]["usage"]
+    ttl = CACHE_TTL_SHORT
+    for entry in replies:
+        created = entry["message"]["usage"].get("cache_creation") or {}
+        long_tokens = created.get("ephemeral_1h_input_tokens") or 0
+        short_tokens = created.get("ephemeral_5m_input_tokens") or 0
+        if long_tokens + short_tokens > 0:
+            ttl = CACHE_TTL_LONG if long_tokens > 0 else CACHE_TTL_SHORT
+            break
+    newest_id = replies[0]["message"].get("id")
+    times = [_parse_entry_time(replies[0])]
+    if newest_id:
+        times += [_parse_entry_time(e) for e in replies[1:] if e["message"].get("id") == newest_id]
+    times = [t for t in times if t is not None]
+    if not times:
+        return None
+    elapsed = (datetime.now(timezone.utc) - min(times)).total_seconds()
+    cached = (usage.get("cache_read_input_tokens") or 0) + (usage.get("cache_creation_input_tokens") or 0)
+    return cached, int(ttl - elapsed)
+
+
+def get_scratchpad_dir(session_id):
+    """Claude Code's per-session scratchpad: <tmp>/claude-<uid>/<project>/<session_id>/scratchpad.
+
+    The layout is not a documented interface; if it changes, the segment just
+    stops rendering.
+    """
+    if not session_id or not re.fullmatch(r"[0-9A-Za-z_-]+", session_id) or not hasattr(os, "getuid"):
+        return None
+    roots = []
+    for tmp in (tempfile.gettempdir(), "/tmp"):
+        if tmp not in roots:
+            roots.append(tmp)
+    for tmp in roots:
+        pattern = os.path.join(glob.escape(tmp), f"claude-{os.getuid()}", "*", session_id, "scratchpad")
+        for path in sorted(glob.glob(pattern)):
+            if os.path.isdir(path):
+                return path
+    return None
+
+
+# =============================================================================
 # SEGMENT RENDERERS
 # =============================================================================
 
@@ -1595,6 +1732,8 @@ def _render_directory(ctx, opts):
             cwd_short = "~" + cwd[len(home) :]
         else:
             cwd_short = cwd
+    if opts.get("link") == "1":
+        cwd_short = _osc8(_file_url(cwd), cwd_short)
     return f"   {text_color('cwd')}{cwd_short}"
 
 
@@ -1733,6 +1872,57 @@ def _render_cost(ctx, opts):
     return f"   {text_color('cost')}${cost:.2f}"
 
 
+def _int_opt(opts, key, default):
+    try:
+        return int(opts.get(key, default))
+    except (TypeError, ValueError):
+        return default
+
+
+def _render_cache_ttl(ctx, opts):
+    """Time left until the prompt cache expires (`cache 42 m`).
+
+    A message sent after expiry re-writes the whole context to the cache,
+    at a multiple of the cache-read price. Hidden while fewer than
+    min_tokens are cached. Needs statusLine.refreshInterval to tick between
+    events.
+    """
+    status = get_cache_status(ctx["data"].get("transcript_path"))
+    if not status:
+        return ""
+    cached, left = status
+    if cached < _int_opt(opts, "min_tokens", 10000):
+        return ""
+    theme = THEMES[THEME]
+    label = f"   {text_color('cache')}cache\u00a0"
+    if left <= 0:
+        return label + _color(*theme["usage_red"], is_bg=False) + "expired"
+    minutes = left // 60
+    value = f"{minutes}\u00a0m" if minutes else "<1\u00a0m"
+    if left < _int_opt(opts, "crit", 3) * 60:
+        color = _color(*theme["usage_red"], is_bg=False)
+    elif left < _int_opt(opts, "warn", 10) * 60:
+        color = _color(*theme["usage_yellow"], is_bg=False)
+    else:
+        color = ""
+    return label + color + value
+
+
+def _render_scratchpad(ctx, opts):
+    """Clickable OSC 8 link to the session scratchpad; only once it has files unless always=1."""
+    path = get_scratchpad_dir(ctx["data"].get("session_id"))
+    if not path:
+        return ""
+    if opts.get("always") != "1":
+        try:
+            if not os.listdir(path):
+                return ""
+        except OSError:
+            return ""
+    label = opts.get("label") or "scratch"
+    return f"   {text_color('cwd')}" + _osc8(_file_url(path), label)
+
+
 def _render_update(ctx, opts):
     update_info = ctx.get("update_info")
     if not update_info:
@@ -1778,6 +1968,8 @@ SEGMENT_RENDERERS = {
     "usage_fable": _render_usage_fable,
     "usage_burndown": _render_usage_burndown,
     "cost": _render_cost,
+    "cache_ttl": _render_cache_ttl,
+    "scratchpad": _render_scratchpad,
     "update": _render_update,
     "new_line": _render_new_line,
 }

@@ -21,10 +21,12 @@ A statusline script for [Claude Code](https://docs.anthropic.com/en/docs/claude-
 - **Update checker** - notifies when a new Claude Code version is available
 - **Model badge** (Opus/Sonnet/Haiku/Fable)
 - **Context window progress bar and token count with percentage**
-- **Working directory**
+- **Working directory** (optionally a clickable link)
 - **Git branch** (hiding main/master as an option)
 - **Git status** indicators (staged, modified, untracked, stash, ahead/behind)
 - **Usage** tracking both 5-hour and 7-day window showing what needs to be known (how much, to when and how much you're burning through them)
+- **Prompt cache countdown** - minutes until the cache expires and the next message costs a full cache write
+- **Scratchpad link** - clickable link to the session's scratchpad directory
 - **Dark and light theme** support (Nord-inspired palette) with option to customize.
 - **Truecolor (24-bit)** with automatic 256-color fallback
 - **Plugin system** for custom segments
@@ -122,6 +124,8 @@ Each token is `segment_name` optionally followed by `:key=value` pairs. Unknown 
 | `usage_fable` | Per-model weekly usage gauge, Fable by default. Shows only if your account has a per-model limit; [requires the legacy OAuth API](#per-model-usage-gauge-usage_fable) |
 | `cost` | Session cost in USD (e.g. `$1.23`), subagents included. Claude Code's estimate at API list prices, same as `/cost`; not what a subscription bills |
 | `usage_burndown` | Burndown warning adapting to weekly window position (not in defaults) |
+| `cache_ttl` | Time until the prompt cache expires, e.g. `cache 42 m` ([details](#prompt-cache-countdown-cache_ttl), not in defaults) |
+| `scratchpad` | Clickable link to the session scratchpad, shown once it has files ([details](#clickable-links), not in defaults) |
 | `new_line` | Insert line break for multi-line layouts (not in defaults) |
 
 #### Segment options
@@ -131,6 +135,7 @@ Each token is `segment_name` optionally followed by `:key=value` pairs. Unknown 
 | `model` | `effort` | `short`/`full` | (off) | Show effort level: `short` (L/M/H/X/MAX) or `full` (low/medium/high/xhigh/max). Read from stdin `effort.level` (CC 2.1.119+); badge omitted on models without effort support |
 | `progress_bar` | `width` | integer | `12` | Bar width in characters |
 | `directory` | `basename_only` | `0`/`1` | `0` | Show only the directory name instead of the full path |
+| `directory` | `link` | `0`/`1` | `0` | Make the directory a clickable `file://` link ([OSC 8](#clickable-links)) |
 | `worktree` | `show` | `name`/`branch`/`path`/`origin` or comma-separated | `name` | Which worktree fields to display |
 | `added_dirs` | `basename_only` | `0`/`1` | `0` | Show only directory names instead of full paths |
 | `added_dirs` | `separator` | string | ` • ` | Separator between directory paths |
@@ -147,6 +152,11 @@ Each token is `segment_name` optionally followed by `:key=value` pairs. Unknown 
 | `usage_burndown` | `verbosity` | `default`/`short` | `default` | Message style (see burndown section) |
 | `usage_burndown` | `coeff` | float | `1.4` | Relevance filter power curve exponent (see burndown section) |
 | `usage_burndown` | `halftrust` | float (hours) | `16` | Bayesian shrinkage half-trust point (see burndown section) |
+| `cache_ttl` | `min_tokens` | integer | `10000` | Hide the countdown while fewer tokens are cached |
+| `cache_ttl` | `warn` | minutes | `10` | Turn yellow below this many minutes left |
+| `cache_ttl` | `crit` | minutes | `3` | Turn red below this many minutes left |
+| `scratchpad` | `always` | `0`/`1` | `0` | Show the link even while the scratchpad is empty |
+| `scratchpad` | `label` | string (no spaces) | `scratch` | Link text |
 
 #### Examples
 
@@ -168,6 +178,9 @@ SL_SEGMENTS='model progress_bar percentage tokens directory:basename_only=1 git_
 
 # Show git branch even on main/master
 SL_SEGMENTS='model progress_bar percentage tokens directory git_branch:hide_default=0'
+
+# Prompt cache countdown, clickable directory and scratchpad link
+SL_SEGMENTS='model progress_bar percentage tokens directory:link=1 git_branch cache_ttl scratchpad'
 
 # Multi-line layout: model and progress on first line, directory on second
 SL_SEGMENTS='model progress_bar percentage new_line directory git_branch'
@@ -264,6 +277,7 @@ gradient = [
 | `text_added_dirs` | `"#hex"` | Added directories text |
 | `text_worktree` | `"#hex"` | Worktree info text |
 | `text_cost` | `"#hex"` | Session cost text |
+| `text_cache` | `"#hex"` | Prompt cache countdown text |
 | `usage_light` | `"#hex"` | Usage gauge: well ahead |
 | `usage_green` | `"#hex"` | Usage gauge: on track |
 | `usage_yellow` | `"#hex"` | Usage gauge: faster than sustainable |
@@ -439,6 +453,37 @@ SL_SEGMENTS='... usage_fable:only_current=1'
 | **No burndown** | `usage_burndown` is driven by the shared `seven_day` window only and ignores this segment. |
 
 If the configured model has no scoped limit — wrong name, or a plan without a per-model cap — the segment renders as empty rather than showing an error.
+
+### Prompt cache countdown (`cache_ttl`)
+
+Claude Code caches the conversation prefix. While the cache is warm, the next message reads it at a fraction of the input price; once it expires, the whole context is written to the cache again at a multiple of that price. `cache_ttl` shows how long you have:
+
+```
+cache 42 m      cache 7 m (yellow)      cache 2 m (red)      cache expired (red)
+```
+
+- **TTL** is 1 hour or 5 minutes. It is not configured: Claude Code picks it per request (for example, it drops to 5 minutes in usage overage), so the segment reads it from the `cache_creation` breakdown (`ephemeral_1h_input_tokens` / `ephemeral_5m_input_tokens`) of the newest reply that wrote to the cache.
+- **The clock** starts at the newest main-thread API reply. Subagent (sidechain), synthetic and API-error entries are skipped.
+- **Hidden** while fewer than `min_tokens` (default 10k) are cached, since an expiry then costs next to nothing.
+- **Data source**: stdin JSON carries no prompt cache data, so this is the one segment that reads `transcript_path`. Only the tail of the file is read (256 KB, growing up to 4 MB while no reply is found), so long sessions do not slow the status line down.
+
+The status line normally redraws only on session events, so the countdown would stand still while you are away. Let it tick with `refreshInterval` (seconds):
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "SL_SEGMENTS='... cache_ttl' ~/.claude/claude-code-status-line.py",
+    "refreshInterval": 30
+  }
+}
+```
+
+### Clickable links
+
+`directory:link=1` and the `scratchpad` segment print OSC 8 hyperlinks to `file://` URLs, which open the directory in your file manager. Terminals without OSC 8 support show plain text. Some terminals (VTE-based ones such as GNOME Terminal or Ptyxis) underline links on hover; that is drawn by the terminal and cannot be styled from the script.
+
+`scratchpad` links to the per-session scratchpad Claude Code creates at `<tmp>/claude-<uid>/<project>/<session_id>/scratchpad`. It appears once the directory has files (`always=1` shows it while empty too). That layout is not a documented interface: if Claude Code changes it, the segment renders nothing.
 
 ### Truecolor Detection
 
