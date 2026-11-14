@@ -23,6 +23,7 @@ Note: After initial setup, edits to this script take effect immediately (no rest
 Latest version: https://github.com/benabraham/claude-code-status-line
 """
 
+import functools
 import json
 import os
 import re
@@ -87,6 +88,20 @@ def _parse_usage_deadline(raw):
 
 # Personal horizon: pace usage against this instant instead of the API reset.
 USAGE_DEADLINE = _parse_usage_deadline(_env_str("USAGE_DEADLINE", ""))
+# Plugins may supply the deadline instead (api.set_usage_deadline). The env var wins.
+_DEADLINE_PROVIDERS = []
+
+
+@functools.cache
+def _usage_deadline():
+    """SL_USAGE_DEADLINE, else the first plugin provider's answer. Asked once per render."""
+    if USAGE_DEADLINE is not None or not _DEADLINE_PROVIDERS:
+        return USAGE_DEADLINE
+    try:
+        dt = _DEADLINE_PROVIDERS[0]()
+    except Exception:
+        return None  # A broken plugin never breaks the statusline.
+    return dt if dt is None or dt.tzinfo else dt.astimezone()
 
 # --- Segment system ---
 
@@ -1323,11 +1338,12 @@ def _effective_window_end(reset_dt, now):
     past or beyond the reset is ignored, so the API value is the automatic
     fallback and a stale override needs no cleanup.
     """
-    if USAGE_DEADLINE is None:
+    deadline = _usage_deadline()
+    if deadline is None:
         return reset_dt, False
-    if USAGE_DEADLINE <= now or USAGE_DEADLINE >= reset_dt:
+    if deadline <= now or deadline >= reset_dt:
         return reset_dt, False
-    return USAGE_DEADLINE, True
+    return deadline, True
 
 
 def _format_burndown(seconds_to_depletion, seconds_early, seconds_until_end, verbosity="default", to_stop=False):
@@ -1800,6 +1816,8 @@ The api object provides:
   - api.fg(hex_or_256) — foreground color code
   - api.bg(hex_or_256) — background color code
   - api.text_color(key) — theme text color
+  - api.set_usage_deadline(provider) — provider() -> datetime or None, used
+      as SL_USAGE_DEADLINE when that env var is unset
 
 Plugins are loaded once at import time. Segment names from plugins
 are automatically added to VALID_SEGMENTS so they can be used in
@@ -1848,6 +1866,16 @@ class _PluginAPI:
         SEGMENT_RENDERERS[name] = renderer
         if defaults:
             SEGMENT_DEFAULTS[name] = defaults
+
+    @staticmethod
+    def set_usage_deadline(provider):
+        """Supply the personal deadline from code, e.g. per account.
+
+        Args:
+            provider: Function() -> datetime or None. Naive means local time.
+                Called at most once per render, only when SL_USAGE_DEADLINE is unset.
+        """
+        _DEADLINE_PROVIDERS.append(provider)
 
 
 def _load_plugins():

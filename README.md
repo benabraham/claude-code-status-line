@@ -482,6 +482,7 @@ SL_SEGMENTS="model progress_bar percentage session directory git_branch"
 | `api.fg(color)` | Foreground ANSI code. `"#RRGGBB"` (truecolor with 256 fallback) or `int` (256-color) |
 | `api.bg(color)` | Background ANSI code. Same formats |
 | `api.text_color(key)` | Themed text color by key (e.g. `"percent"`, `"cwd"`, `"git"`) |
+| `api.set_usage_deadline(provider)` | Supply the [personal deadline](#personal-deadline-sl_usage_deadline) from code. `provider() -> datetime or None`, naive = local. Called once per render, only when `SL_USAGE_DEADLINE` is unset |
 | `api.RESET` | ANSI reset escape |
 | `api.BOLD` | ANSI bold escape |
 
