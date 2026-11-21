@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [5.8.0] - 2026-11-21
+
+### Added
+- **`SL_USAGE_START`**: personal window start after a usage reset or plan upgrade.
+  - Usage, burn rate and the burndown count from that moment, not the API week start.
+  - The gauge shows it in brackets: `[Wed 21:00] → 95 % → Sat 21:00`.
+  - Hide the label per gauge with `show_start=0`. Pacing still uses the start.
+  - Expires by itself once the API window renews.
+- **`SL_USAGE_FABLE_START`**: the same, for a reset of one model's usage only.
+  - Applies only to the `usage_fable` gauge. The total gauge keeps the API start.
+- **Plugin hooks**: `api.set_usage_deadline`, `api.set_usage_start` and
+  `api.set_usage_fable_start` supply these values from code, e.g. per account.
+  The env var wins when set.
+
+---
+
 ## [5.7.0] - 2026-10-15
 
 ### Added
