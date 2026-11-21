@@ -70,12 +70,12 @@ DUMP = _env_str("DUMP", "")
 DUMP_PATH = "/tmp/claude-statusline-dump.jsonl"
 
 
-def _parse_usage_deadline(raw):
-    """Parse SL_USAGE_DEADLINE into an aware datetime, or None when unset/invalid.
+def _parse_instant(raw):
+    """Parse an SL_USAGE_DEADLINE/SL_USAGE_START value into an aware datetime, or None.
 
     Absolute ISO 8601 only: '2026-08-14T12:00', '2026-08-14 12:00', optional
-    offset. Naive values are read as local time. Once it is in the past the
-    override stops applying, so a stale value never needs clearing.
+    offset. Naive values are read as local time. Both overrides expire on
+    their own (see _effective_window), so a stale value never needs clearing.
     """
     if not raw:
         return None
@@ -87,21 +87,44 @@ def _parse_usage_deadline(raw):
 
 
 # Personal horizon: pace usage against this instant instead of the API reset.
-USAGE_DEADLINE = _parse_usage_deadline(_env_str("USAGE_DEADLINE", ""))
-# Plugins may supply the deadline instead (api.set_usage_deadline). The env var wins.
+USAGE_DEADLINE = _parse_instant(_env_str("USAGE_DEADLINE", ""))
+# Personal window start: usage restarted from zero here (reset, plan upgrade).
+USAGE_START = _parse_instant(_env_str("USAGE_START", ""))
+# Same, for the per-model gauge only (usage_fable): a reset of that model's usage alone.
+USAGE_FABLE_START = _parse_instant(_env_str("USAGE_FABLE_START", ""))
+# Plugins may supply each value instead (api.set_usage_*). The env var wins.
 _DEADLINE_PROVIDERS = []
+_START_PROVIDERS = []
+_FABLE_START_PROVIDERS = []
+
+
+def _override(env_value, providers):
+    """The env value, else the first plugin provider's answer."""
+    if env_value is not None or not providers:
+        return env_value
+    try:
+        dt = providers[0]()
+    except Exception:
+        return None  # A broken plugin never breaks the statusline.
+    return dt if dt is None or dt.tzinfo else dt.astimezone()
 
 
 @functools.cache
 def _usage_deadline():
-    """SL_USAGE_DEADLINE, else the first plugin provider's answer. Asked once per render."""
-    if USAGE_DEADLINE is not None or not _DEADLINE_PROVIDERS:
-        return USAGE_DEADLINE
-    try:
-        dt = _DEADLINE_PROVIDERS[0]()
-    except Exception:
-        return None  # A broken plugin never breaks the statusline.
-    return dt if dt is None or dt.tzinfo else dt.astimezone()
+    """SL_USAGE_DEADLINE or a plugin's answer. Asked once per render."""
+    return _override(USAGE_DEADLINE, _DEADLINE_PROVIDERS)
+
+
+@functools.cache
+def _usage_start():
+    """SL_USAGE_START or a plugin's answer. Asked once per render."""
+    return _override(USAGE_START, _START_PROVIDERS)
+
+
+@functools.cache
+def _usage_fable_start():
+    """SL_USAGE_FABLE_START or a plugin's answer. Asked once per render."""
+    return _override(USAGE_FABLE_START, _FABLE_START_PROVIDERS)
 
 # --- Segment system ---
 
@@ -1330,20 +1353,29 @@ def _format_duration_compact(seconds):
     return "".join(parts)
 
 
-def _effective_window_end(reset_dt, now):
-    """Window end used for pacing: (end_dt, deadline_active).
+def _effective_window(reset_dt, window_seconds, now, fable=False):
+    """Window used for pacing: (start_ts, end_dt, deadline_active, start_active).
 
     SL_USAGE_DEADLINE replaces the API reset when it lands inside the window
-    still ahead of us — the horizon you actually work to. A deadline in the
-    past or beyond the reset is ignored, so the API value is the automatic
-    fallback and a stale override needs no cleanup.
+    still ahead of us — the horizon you actually work to. SL_USAGE_START
+    replaces the API window start when it lies inside the window and is
+    already past — a reset or plan upgrade, after which usage counts from zero.
+    fable=True also considers SL_USAGE_FABLE_START (a reset of that model's
+    usage only); the latest valid start wins. Out-of-range values fall back to
+    the API window, so all expire on their own: the deadline once it passes,
+    a start once the API window renews.
     """
+    start_ts = reset_dt.timestamp() - window_seconds
+    end_dt, deadline_active = reset_dt, False
     deadline = _usage_deadline()
-    if deadline is None:
-        return reset_dt, False
-    if deadline <= now or deadline >= reset_dt:
-        return reset_dt, False
-    return deadline, True
+    if deadline is not None and now < deadline < reset_dt:
+        end_dt, deadline_active = deadline, True
+    start_active = False
+    starts = [_usage_start(), _usage_fable_start() if fable else None]
+    for start in starts:
+        if start is not None and start_ts < start.timestamp() <= now.timestamp():
+            start_ts, start_active = start.timestamp(), True
+    return start_ts, end_dt, deadline_active, start_active
 
 
 def _format_burndown(seconds_to_depletion, seconds_early, seconds_until_end, verbosity="default", to_stop=False):
@@ -1447,19 +1479,25 @@ def format_usage_indicators(usage_data):
             continue
 
         now = datetime.now(timezone.utc)
-        end_dt, deadline_active = _effective_window_end(reset_dt, now)
+        window_start, end_dt, deadline_active, start_active = _effective_window(
+            reset_dt, window_hours * 3600, now, fable=api_key == "seven_day_fable"
+        )
         remaining_pct = max(0, int(100 - utilization_pct))
         reset_label = end_dt.astimezone().strftime(time_fmt)
         if deadline_active:
             # Bracket the time so an overridden end never reads as an API reset.
             reset_label = f"[{reset_label}]"
+        # A personal start leads the line, bracketed the same way: [Wed 21:00] → 95 % → Sat 21:00
+        # Per-segment option show_start=0 hides it; pacing still uses the start.
+        start_part = ""
+        if start_active and opts.get("show_start", "1") != "0":
+            start_label = datetime.fromtimestamp(window_start).astimezone().strftime(time_fmt)
+            start_part = f"[{start_label}]\u00a0→\u00a0"
 
-        # Calculate time elapsed in window
-        window_seconds = window_hours * 3600
-        window_start = reset_dt.timestamp() - window_seconds
-        # A personal deadline moves only the END of the window — usage still
-        # accumulated from the real start, so the observed rate stays honest
-        # while "how much time is left" shrinks to the horizon you work to.
+        # Calculate time elapsed in window. A personal deadline moves only the
+        # END — usage still accumulated from the start, so the observed rate
+        # stays honest while "time left" shrinks to the horizon you work to.
+        # A personal start moves the START, because usage was reset to zero there.
         effective_window_seconds = max(1, end_dt.timestamp() - window_start)
         elapsed_seconds = now.timestamp() - window_start
         time_elapsed_pct = max(0, min(100, (elapsed_seconds / effective_window_seconds) * 100))
@@ -1555,7 +1593,7 @@ def format_usage_indicators(usage_data):
         else:
             label = ""
         label_part = f"{color}{label}\u00a0" if label else ""
-        results[segment_name] = f"   {label_part}{gauge_part}{color}{remaining_pct}\u00a0%\u00a0→\u00a0{reset_label}"
+        results[segment_name] = f"   {label_part}{gauge_part}{color}{start_part}{remaining_pct}\u00a0%\u00a0→\u00a0{reset_label}"
 
     for seg in USAGE_GAUGE_SEGMENTS:
         if seg not in results:
@@ -1818,6 +1856,8 @@ The api object provides:
   - api.text_color(key) — theme text color
   - api.set_usage_deadline(provider) — provider() -> datetime or None, used
       as SL_USAGE_DEADLINE when that env var is unset
+  - api.set_usage_start(provider) — same contract, used as SL_USAGE_START
+  - api.set_usage_fable_start(provider) — same contract, used as SL_USAGE_FABLE_START
 
 Plugins are loaded once at import time. Segment names from plugins
 are automatically added to VALID_SEGMENTS so they can be used in
@@ -1876,6 +1916,26 @@ class _PluginAPI:
                 Called at most once per render, only when SL_USAGE_DEADLINE is unset.
         """
         _DEADLINE_PROVIDERS.append(provider)
+
+    @staticmethod
+    def set_usage_start(provider):
+        """Supply the personal window start (a reset or plan upgrade) from code.
+
+        Args:
+            provider: Function() -> datetime or None. Naive means local time.
+                Called at most once per render, only when SL_USAGE_START is unset.
+        """
+        _START_PROVIDERS.append(provider)
+
+    @staticmethod
+    def set_usage_fable_start(provider):
+        """Supply the per-model gauge start (a reset of that model's usage) from code.
+
+        Args:
+            provider: Function() -> datetime or None. Naive means local time.
+                Called at most once per render, only when SL_USAGE_FABLE_START is unset.
+        """
+        _FABLE_START_PROVIDERS.append(provider)
 
 
 def _load_plugins():

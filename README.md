@@ -91,6 +91,8 @@ Alternatively, edit the defaults at the top of the script.
 | `SL_SHOW_STATUSLINE_UPDATE` | `1` | Show status line update notifications (`0` to disable) |
 | `SL_THEME_FILE` | `~/.claude/claude-code-theme.toml` | Path to custom theme file (see below) |
 | `SL_USAGE_DEADLINE` | (empty) | Personal deadline to pace usage against instead of the API reset (see below) |
+| `SL_USAGE_START` | (empty) | Personal window start after a usage reset or plan upgrade (see below) |
+| `SL_USAGE_FABLE_START` | (empty) | Same, for the `usage_fable` gauge only, after a reset of that model's usage (see below) |
 | `SL_DUMP` | (empty) | Set to `1` to log raw stdin JSON to `/tmp/claude-statusline-dump.jsonl` |
 
 ### Segment Order & Options
@@ -380,6 +382,43 @@ Because budget does not actually renew at your deadline, the burndown says **`to
 
 The override is ignored once it is in the past, or if it falls beyond the API reset — both cases fall back to the real reset automatically, so a stale value needs no cleanup. Unparseable values are ignored the same way.
 
+### Personal window start (`SL_USAGE_START`)
+
+A usage reset or a plan upgrade in the middle of the week sets your usage back to zero, but the API window keeps its old start. Paced against the full week, the burn rate since the reset looks far too low.
+
+`SL_USAGE_START` moves the window start to the moment of the reset:
+
+```bash
+export SL_USAGE_START='2026-08-12T09:30'   # same format as SL_USAGE_DEADLINE
+```
+
+Usage, elapsed time and the on-track rate are then all counted from that moment. The window end stays the API reset, or `SL_USAGE_DEADLINE` when set. It applies to every usage window that started *before* it, so a 5-hour window is affected only during the 5 hours after the reset.
+
+The overridden start leads the gauge text in **square brackets**, like an overridden end:
+
+```
+start off   ▊█  70 % → Sat 21:00
+start on    ▋   [Wed 21:00] → 95 % → Sat 21:00
+```
+
+Hide it per gauge with `show_start=0`, e.g. `usage_weekly:show_start=0`. Pacing still uses the start.
+
+The override is ignored while it lies in the future, and once the API window renews past it, so a stale value needs no cleanup. Unparseable values are ignored the same way.
+
+#### Per-model reset (`SL_USAGE_FABLE_START`)
+
+A reset of one model's usage removes it from both gauges, but only that model's part. Example: 30 % used in total, of which 10 % was Fable. The Fable gauge, capped at half the weekly budget, showed 20 %. After the reset the total drops to 20 % and Fable to 0 %.
+
+```bash
+export SL_USAGE_FABLE_START='2026-08-12T09:30'
+```
+
+- **Fable gauge** — all its usage restarted at zero, so it counts from this start.
+- **Total gauge** — keeps the API start. The usage of other models before the reset still counts.
+- **Total burndown** — reads slightly too calm, because the erased usage no longer shows. The API does not report how much of the total was Fable, so this cannot be corrected.
+
+It applies to whatever model `usage_fable` tracks (`model=` option). When both starts are set, the Fable gauge uses the later one.
+
 ### Per-model usage gauge (`usage_fable`)
 
 Claude Code enforces a separate weekly limit for some models on top of the shared 7-day window — the one `/usage` lists as its own row. `usage_fable` renders that limit with the same gauge, colors, and forward-looking ratio as `usage_5hour` / `usage_weekly`:
@@ -483,6 +522,8 @@ SL_SEGMENTS="model progress_bar percentage session directory git_branch"
 | `api.bg(color)` | Background ANSI code. Same formats |
 | `api.text_color(key)` | Themed text color by key (e.g. `"percent"`, `"cwd"`, `"git"`) |
 | `api.set_usage_deadline(provider)` | Supply the [personal deadline](#personal-deadline-sl_usage_deadline) from code. `provider() -> datetime or None`, naive = local. Called once per render, only when `SL_USAGE_DEADLINE` is unset |
+| `api.set_usage_start(provider)` | Supply the [personal window start](#personal-window-start-sl_usage_start) from code. Same contract, used only when `SL_USAGE_START` is unset |
+| `api.set_usage_fable_start(provider)` | Supply the [per-model reset](#per-model-reset-sl_usage_fable_start) start from code. Same contract, used only when `SL_USAGE_FABLE_START` is unset |
 | `api.RESET` | ANSI reset escape |
 | `api.BOLD` | ANSI bold escape |
 
